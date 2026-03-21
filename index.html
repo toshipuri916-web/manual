@@ -252,6 +252,16 @@ function App() {
 
   useEffect(() => { idbGetAll().then(all=>setImgCache(all)).catch(()=>{}); }, []);
 
+  // 起動時にID重複を自動修正
+  useEffect(() => {
+    const { tasks: fixedTasks, manuals: fixedManuals } = deduplicateIds(tasks, manuals);
+    const taskChanged = JSON.stringify(fixedTasks.map(t=>t.id)) !== JSON.stringify(tasks.map(t=>t.id))
+      || fixedTasks.some((t,i)=>JSON.stringify(t.items.map(x=>x.id))!==JSON.stringify(tasks[i]?.items?.map(x=>x.id)));
+    const manChanged = JSON.stringify(fixedManuals) !== JSON.stringify(manuals);
+    if (taskChanged) setTasks(fixedTasks);
+    if (manChanged)  setManuals(fixedManuals);
+  }, []);
+
   const saveCfg = patch => { const n={lang,enabledLangs,passcode,...patch}; saveJ(CFG_KEY,n); return n; };
   const setLang         = v => { setLangR(v);         saveCfg({lang:v}); };
   const setEnabledLangs = v => { setEnabledLangsR(v); saveCfg({enabledLangs:v}); };
@@ -332,13 +342,16 @@ function App() {
           if(i.image?.startsWith("data:")){const k=`${IMG_PRE}${uid()}`;await idbSet(k,i.image);cache[k]=i.image;return{...i,image:k,translations:i.translations??{}};}
           return {...i,translations:i.translations??{}};
         }));
-        const newTasks   = await Promise.all(p.tasks.map(async t=>({...t,translations:t.translations||{},items:await reEmbedItems(t.items)})));
-        const newManuals = p.manuals ? await Promise.all(p.manuals.map(async m=>({
+        const rawTasks   = await Promise.all(p.tasks.map(async t=>({...t,translations:t.translations||{},items:await reEmbedItems(t.items)})));
+        const rawManuals2 = p.manuals ? await Promise.all(p.manuals.map(async m=>({
           ...m, translations:m.translations||{},
           subcategories: await Promise.all((m.subcategories||m.items?.map(i=>({...i,items:[]})) ||[]).map(async s=>({
             ...s, translations:s.translations||{}, items:await reEmbedItems(s.items||[])
           })))
         }))) : [];
+        const deduped = deduplicateIds(rawTasks, rawManuals2);
+        const newTasks = deduped.tasks;
+        const newManuals = deduped.manuals;
         setImgCache(cache); setTasks(newTasks); setManuals(newManuals);
         showToast("ok",`読み込み完了（${newTasks.length}件の作業）`);
       } catch(err){ showToast("err","読み込みエラー: "+err.message); }
@@ -655,11 +668,11 @@ function App() {
         </div>
       )}
       {editTask&&(<div className="overlay" onClick={()=>setEditTask(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>作業を編集</div><TaskFields task={editTask} onChange={setEditTask}/><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>saveTask(editTask)}>保存する</button><button className="btnD" onClick={()=>deleteTask(editTask.id)}>削除する</button><button className="btnG" onClick={()=>setEditTask(null)}>キャンセル</button></div></div></div></div>)}
-      {showAddTask&&(<div className="overlay" onClick={()=>setShowAddTask(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>作業を追加</div><TaskFields task={newTask} onChange={setNewTask}/><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={addTask}>追加する</button><button className="btnG" onClick={()=>setShowAddTask(false)}>キャンセル</button></div></div></div></div>)}
+      {showAddTask&&(<div className="overlay" onClick={()=>setShowAddTask(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>作業を追加</div><TaskFields task={newTask} onChange={setNewTask}/><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={addTask}>追加する</button><button className="btnG" onClick={()=>{setShowAddTask(false);setNewTask({hour:9,minute:0,endHour:null,endMinute:0,days:[],title:"",summary:"",date:"",priority:""});}}>キャンセル</button></div></div></div></div>)}
       {editCat&&(<div className="overlay" onClick={()=>setEditCat(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>カテゴリを編集</div><div style={{marginBottom:20}}><label className="lbl">カテゴリ名</label><input className="inp" value={editCat.title} onChange={e=>setEditCat(p=>({...p,title:e.target.value}))} placeholder="例：レジ操作"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={editCat.summary||""} onChange={e=>setEditCat(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>saveCat(editCat)}>保存する</button><button className="btnD" onClick={()=>deleteCat(editCat.id)}>削除する</button><button className="btnG" onClick={()=>setEditCat(null)}>キャンセル</button></div></div></div></div>)}
-      {showAddCat&&(<div className="overlay" onClick={()=>setShowAddCat(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>カテゴリを追加</div><div style={{marginBottom:20}}><label className="lbl">カテゴリ名</label><input className="inp" value={newCat.title} onChange={e=>setNewCat(p=>({...p,title:e.target.value}))} placeholder="例：レジ操作"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={newCat.summary||""} onChange={e=>setNewCat(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={addCat}>追加する</button><button className="btnG" onClick={()=>setShowAddCat(false)}>キャンセル</button></div></div></div></div>)}
+      {showAddCat&&(<div className="overlay" onClick={()=>setShowAddCat(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>カテゴリを追加</div><div style={{marginBottom:20}}><label className="lbl">カテゴリ名</label><input className="inp" value={newCat.title} onChange={e=>setNewCat(p=>({...p,title:e.target.value}))} placeholder="例：レジ操作"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={newCat.summary||""} onChange={e=>setNewCat(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={addCat}>追加する</button><button className="btnG" onClick={()=>{setShowAddCat(false);setNewCat({title:"",summary:""});}}>キャンセル</button></div></div></div></div>)}
       {editSub&&(<div className="overlay" onClick={()=>setEditSub(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>サブカテゴリを編集</div><div style={{marginBottom:20}}><label className="lbl">サブカテゴリ名</label><input className="inp" value={editSub.title} onChange={e=>setEditSub(p=>({...p,title:e.target.value}))} placeholder="例：現金会計"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={editSub.summary||""} onChange={e=>setEditSub(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>saveSub(editSub)}>保存する</button><button className="btnD" onClick={()=>deleteSub(editSub.catId,editSub.id)}>削除する</button><button className="btnG" onClick={()=>setEditSub(null)}>キャンセル</button></div></div></div></div>)}
-      {showAddSub&&(<div className="overlay" onClick={()=>setShowAddSub(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>サブカテゴリを追加</div><div style={{marginBottom:20}}><label className="lbl">サブカテゴリ名</label><input className="inp" value={newSub.title} onChange={e=>setNewSub(p=>({...p,title:e.target.value}))} placeholder="例：現金会計"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={newSub.summary||""} onChange={e=>setNewSub(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>addSub(showAddSub)}>追加する</button><button className="btnG" onClick={()=>setShowAddSub(null)}>キャンセル</button></div></div></div></div>)}
+      {showAddSub&&(<div className="overlay" onClick={()=>setShowAddSub(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>サブカテゴリを追加</div><div style={{marginBottom:20}}><label className="lbl">サブカテゴリ名</label><input className="inp" value={newSub.title} onChange={e=>setNewSub(p=>({...p,title:e.target.value}))} placeholder="例：現金会計"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={newSub.summary||""} onChange={e=>setNewSub(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>addSub(showAddSub)}>追加する</button><button className="btnG" onClick={()=>{setShowAddSub(null);setNewSub({title:"",summary:""});}}>キャンセル</button></div></div></div></div>)}
       {selItem&&!editItem&&(
         <div className="overlay" onClick={()=>setSelItem(null)}>
           <div className="sheet" onClick={e=>e.stopPropagation()}>
@@ -856,6 +869,18 @@ function LinkText({ text, style }) {
       )}
     </span>
   );
+}
+
+
+/* -- 起動時ID重複修正 -- */
+function deduplicateIds(tasks, manuals) {
+  const seen = new Set();
+  const newId = () => { let id = String(Date.now() + Math.random()); while(seen.has(id)) id = String(Date.now() + Math.random()); seen.add(id); return id; };
+  const fixItem = i => { const id = seen.has(i.id) ? newId() : (seen.add(i.id), i.id); return {...i, id}; };
+  const fixSub  = s => { const id = seen.has(s.id) ? newId() : (seen.add(s.id), s.id); return {...s, id, items:(s.items||[]).map(fixItem)}; };
+  const fixTask = t => { const id = seen.has(t.id) ? newId() : (seen.add(t.id), t.id); return {...t, id, items:(t.items||[]).map(fixItem)}; };
+  const fixCat  = m => { const id = seen.has(m.id) ? newId() : (seen.add(m.id), m.id); return {...m, id, subcategories:(m.subcategories||[]).map(fixSub)}; };
+  return { tasks: tasks.map(fixTask), manuals: manuals.map(fixCat) };
 }
 
 /* -- DragList（カテゴリ・サブカテゴリ・タスク共通の並び替えリスト） -- */
