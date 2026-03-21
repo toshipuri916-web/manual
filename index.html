@@ -578,7 +578,7 @@ function App() {
                       onAdd={()=>addTaskItem(task.id)}
                       onAddLink={()=>setLinkPicker(task.id)}
                       onTap={item=>item.linkRef?setLinkedItem({...item,taskId:task.id}):setSelItem({...item,taskId:task.id})}
-                      onEdit={item=>item.linkRef?null:setEditItem({...item,taskId:task.id})}
+                      onEdit={item=>item.linkRef?setLinkedItem({...item,taskId:task.id,editMode:true}):setEditItem({...item,taskId:task.id})}
                       onReorder={arr=>reorderTaskItems(task.id,arr)}
                       showToast={showToast}
                       manuals={manuals}
@@ -700,7 +700,7 @@ function App() {
                 const sub=cat?.subcategories?.find(s=>s.id===linkedItem.linkRef?.subId);
                 if(!sub) return <div style={{textAlign:"center",padding:"40px 0",color:"#c05050"}}>リンク先のマニュアルが見つかりません</div>;
                 return <>
-                  <div style={{marginBottom:4,fontSize:12,color:"#0d7377",fontWeight:600}}>{getT(cat,"title",lang)} › マニュアル</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}><div style={{fontSize:12,color:"#0d7377",fontWeight:600}}>{getT(cat,"title",lang)} › マニュアル</div></div>
                   <div style={{fontSize:20,fontWeight:700,marginBottom:4}}>{getT(sub,"title",lang)}</div>
                   {getT(sub,"summary",lang)&&<div style={{fontSize:14,color:"#808078",marginBottom:16,lineHeight:1.6}}>{getT(sub,"summary",lang)}</div>}
                   <div style={{height:1,background:"#eae7e0",marginBottom:16}}/>
@@ -715,9 +715,30 @@ function App() {
                     onReorder={()=>{}}
                     showToast={showToast}
                   />
-                  <div style={{marginTop:20}}>
-                    <button className="btnG" onClick={()=>setLinkedItem(null)}>← 戻る</button>
-                  </div>
+                  {linkedItem.editMode&&(
+                    <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid #eae7e0"}}>
+                      <label className="lbl">メモ（任意）</label>
+                      <textarea className="inp" style={{minHeight:72}}
+                        value={linkedItem.memo||""}
+                        onChange={e=>setLinkedItem(p=>({...p,memo:e.target.value}))}
+                        placeholder="このリンクに対するメモや補足を入力..."/>
+                      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
+                        <button className="btnP" onClick={()=>{
+                          const {editMode:_em,...item}=linkedItem;
+                          setTasks(p=>p.map(t=>t.id===item.taskId?{...t,items:t.items.map(i=>i.id===item.id?{...i,memo:linkedItem.memo||""}:i)}:t));
+                          setLinkedItem(null);
+                          showToast("ok","保存しました");
+                        }}>保存する</button>
+                        <button className="btnG" onClick={()=>setLinkedItem(null)}>キャンセル</button>
+                      </div>
+                    </div>
+                  )}
+                  {!linkedItem.editMode&&(
+                    <div style={{marginTop:20}}>
+                      {linkedItem.memo&&<div style={{fontSize:14,color:"#606060",lineHeight:1.7,marginBottom:16,padding:"12px",background:"#f5f2ec",borderRadius:10}}>{linkedItem.memo}</div>}
+                      <button className="btnG" onClick={()=>setLinkedItem(null)}>← 戻る</button>
+                    </div>
+                  )}
                 </>;
               })()}
             </div>
@@ -983,10 +1004,21 @@ function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, 
             {editMode&&<div className="grip" onPointerDown={e=>onDown(e,i)} onPointerMove={e=>onMove(e,i)} onPointerUp={e=>onUp(e,i)} onPointerCancel={e=>onUp(e,i)}>⠿</div>}
             <div style={{display:"flex",alignItems:"center",gap:14,padding:"14px 14px 14px"+(editMode?" 0":" 14px"),flex:1,cursor:"pointer",minWidth:0}} onClick={()=>{if(!active.current&&dragIdx===null) onTap(item);}}>
               <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,color:"#b0ada8",minWidth:26,flexShrink:0}}>{String(i+1).padStart(2,"0")}</span>
-              {resolveImg(item.image)?<img src={resolveImg(item.image)} alt="" style={{width:48,height:48,borderRadius:10,objectFit:"cover",flexShrink:0,border:"1px solid #e0ddd6"}}/>:<div style={{width:48,height:48,borderRadius:10,background:"#eae7e0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:20,opacity:.25}}>🖼</span></div>}
+              {item.linkRef
+                ? <div style={{width:48,height:48,borderRadius:10,background:"#e0f2f2",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>📎</div>
+                : resolveImg(item.image)
+                  ? <img src={resolveImg(item.image)} alt="" style={{width:48,height:48,borderRadius:10,objectFit:"cover",flexShrink:0,border:"1px solid #e0ddd6"}}/>
+                  : <div style={{width:48,height:48,borderRadius:10,background:"#eae7e0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:20,opacity:.25}}>🖼</span></div>
+              }
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:15,fontWeight:600,color:item.label?"#1a1a20":"#b0ada8"}}>{getT2(item,"label")||"（手順名未設定）"}</div>
-                {getT2(item,"detail")&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{getT2(item,"detail")}</div>}
+                <div style={{fontSize:15,fontWeight:600,color:"#1a1a20",display:"flex",alignItems:"center",gap:5}}>
+                  {item.linkRef&&<span style={{fontSize:10,background:"#e0f2f2",color:"#0d7377",borderRadius:4,padding:"1px 5px",fontWeight:700,flexShrink:0}}>リンク</span>}
+                  <span>{getT2(item,"label")||"（手順名未設定）"}</span>
+                </div>
+                {item.linkRef
+                  ? (()=>{ const cat=manuals?.find(m=>m.id===item.linkRef.catId); const sub=cat?.subcategories?.find(s=>s.id===item.linkRef.subId); return <>{sub?<div style={{fontSize:12,color:"#0d7377",marginTop:2}}>{getT?getT(cat,"title",lang):""} › {getT?getT(sub,"title",lang):""}</div>:<div style={{fontSize:12,color:"#c05050",marginTop:2}}>リンク先なし</div>}{item.memo&&<div style={{fontSize:12,color:"#606060",marginTop:2,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:1,WebkitBoxOrient:"vertical"}}>{item.memo}</div>}</>; })()
+                  : getT2(item,"detail")&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{getT2(item,"detail")}</div>
+                }
               </div>
             </div>
             {editMode&&<button onClick={()=>onEdit(item)} style={{background:"#f5f2ec",border:"none",borderLeft:"1px solid #eae7e0",padding:"0 14px",fontSize:13,color:"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500,alignSelf:"stretch",flexShrink:0}}>編集</button>}
