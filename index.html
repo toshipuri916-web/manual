@@ -75,7 +75,7 @@ const IMG_PRE   = "img_";
 const isImgKey  = v => typeof v==="string" && v.startsWith(IMG_PRE);
 const fmt       = (h,m) => `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
 const fmtRange  = (sh,sm,eh,em) => { const s=fmt(sh,sm); return (eh==null||eh==="") ? `${s}〜` : `${s}〜${fmt(eh,em??0)}`; };
-let _uid = 1000;
+let _uid = Date.now();
 const uid = () => String(++_uid);
 const loadJ = key => { try { const r=localStorage.getItem(key); return r?JSON.parse(r):null; } catch { return null; } };
 const saveJ = (key,v) => { try { localStorage.setItem(key,JSON.stringify(v)); } catch {} };
@@ -97,7 +97,27 @@ const MM_CODES = {en:"en-US",zh:"zh-CN",vi:"vi-VN",ko:"ko-KR",th:"th-TH",tl:"tl-
 ====================================═== */
 function App() {
   const [tasks,   setTasksRaw]   = useState(() => loadJ(SCH_KEY) ?? []);
-  const [manuals, setManualsRaw] = useState(() => loadJ(MAN_KEY) ?? []);
+  const [manuals, setManualsRaw] = useState(() => {
+    // v2マイグレーション: v1データがあればv2に変換して使う
+    const v2 = loadJ(MAN_KEY);
+    if (v2) return v2;
+    const v1 = loadJ("manual_cat_v1");
+    if (v1) {
+      // v1はitems直下が手順だった可能性あり → subcategories構造に変換
+      const migrated = v1.map(m => ({
+        ...m,
+        translations: m.translations || {},
+        subcategories: m.subcategories
+          ? m.subcategories.map(s => ({...s, translations: s.translations||{}, items: (s.items||[]).map(i=>({...i,translations:i.translations||{}}))}))
+          : (m.items||[]).length > 0
+            ? [{ id: String(Date.now()+Math.random()), title: m.title, summary: "", translations: {}, items: (m.items||[]).map(i=>({...i,translations:i.translations||{}})) }]
+            : [],
+      }));
+      saveJ(MAN_KEY, migrated);
+      return migrated;
+    }
+    return [];
+  });
   const [imgCache,setImgCache]   = useState({});
 
   const cfg0 = loadJ(CFG_KEY) ?? {};
@@ -115,7 +135,7 @@ function App() {
   const [passError,    setPassError]    = useState(false);
   const [transProgress,setTransProgress]= useState(null);
   // タスクの進捗状態（当日リセット）
-  const STATUS_KEY = "task_status_" + new Date().toISOString().slice(0,10);
+  const STATUS_KEY = "task_status_" + new Date().toLocaleDateString("ja-JP").replace(/\//g,"-");
   const [taskStatus, setTaskStatusRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem(STATUS_KEY))||{};}catch{return{};} });
   const setTaskStatus = u => setTaskStatusRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem(STATUS_KEY,JSON.stringify(n));}catch{} return n; });
   // 時刻更新
@@ -380,7 +400,7 @@ function App() {
   /* -- スケジュール CRUD -- */
   const addTask  = () => { if(!newTask.title.trim()) return; setTasks(p=>[...p,{...newTask,id:uid(),items:[],translations:{}}]); setShowAddTask(false); setNewTask({hour:9,minute:0,endHour:null,endMinute:0,days:[],title:"",summary:""}); };
   const saveTask = t => { setTasks(p=>p.map(x=>x.id===t.id?{...x,...t,translations:{}}:x)); setEditTask(null); };
-  const deleteTask = id => openConfirm("この作業を削除しますか？",async()=>{ const t=tasks.find(x=>x.id===id); if(t) for(const i of t.items) if(isImgKey(i.image)) await deleteImage(i.image); setTasks(p=>p.filter(x=>x.id!==id)); if(selTask?.id===id) setSelTask(null); setEditTask(null); });
+  const deleteTask = id => openConfirm("この作業を削除しますか？",async()=>{ const t=tasks.find(x=>x.id===id); if(t) for(const i of t.items) if(isImgKey(i.image)) await deleteImage(i.image); setTasks(p=>p.filter(x=>x.id!==id)); setEditTask(null); if(expandedTask===id) setExpandedTask(null); });
   const reorderTasks = arr => setTasks(arr);
 
   /* -- カテゴリ CRUD -- */
@@ -849,7 +869,9 @@ function DragList({ items, onReorder, editMode, showToast, renderItem }) {
   const dRef    = useRef(null);
   const active  = useRef(false);
 
-  if (items !== local && dRef.current === null && !showConf) setLocal(items);
+  useEffect(() => {
+    if (dRef.current === null && !showConf) setLocal(items);
+  }, [items]);
 
   const getIdx = y => {
     const kids = Array.from(listRef.current?.children ?? []);
@@ -909,7 +931,9 @@ function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, 
   const dRef    = useRef(null);
   const active  = useRef(false);
 
-  if(items!==local && dRef.current===null && !showConf) setLocal(items);
+  useEffect(() => {
+    if (dRef.current === null && !showConf) setLocal(items);
+  }, [items]);
 
   const getIdx = y => { const kids=Array.from(listRef.current?.children??[]); for(let i=0;i<kids.length;i++) if(y<kids[i].getBoundingClientRect().bottom) return i; return kids.length-1; };
   const onDown = (e,i) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); dRef.current=i; active.current=true; setDragIdx(i); setOverIdx(i); };
