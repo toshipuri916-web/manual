@@ -1025,7 +1025,7 @@ function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, 
                 }
               </div>
             </div>
-            {editMode&&<button onClick={()=>onEdit(item)} style={{background:"#f5f2ec",border:"none",borderLeft:"1px solid #eae7e0",padding:"0 14px",fontSize:13,color:"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500,alignSelf:"stretch",flexShrink:0}}>編集</button>}
+            {(editMode||item.linkRef)&&<button onClick={()=>onEdit(item)} style={{background:item.linkRef?"#e0f2f2":"#f5f2ec",border:"none",borderLeft:"1px solid #eae7e0",padding:"0 14px",fontSize:13,color:item.linkRef?"#0d7377":"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500,alignSelf:"stretch",flexShrink:0}}>{item.linkRef?"詳細":"編集"}</button>}
           </div>
         ))}
       </div>
