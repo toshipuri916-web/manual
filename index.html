@@ -152,6 +152,14 @@ function App() {
   const [passDigits,   setPassDigits]   = useState([]);
   const [passError,    setPassError]    = useState(false);
   const [transProgress,setTransProgress]= useState(null);
+  const mkNotice = text => ({id:uid(), text:text.trim(), at:new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})});
+  const [adminNotices, setAdminNoticesRaw] = useState(()=>loadJ("manual_admin_notices_v1")??[]);
+  const setAdminNotices = u => setAdminNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_admin_notices_v1",JSON.stringify(n));}catch{} return n; });
+  const [memoNotices,  setMemoNoticesRaw]  = useState(()=>loadJ("manual_memo_notices_v1")??[]);
+  const setMemoNotices  = u => setMemoNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_memo_notices_v1", JSON.stringify(n));}catch{} return n; });
+  const [newAdminText,  setNewAdminText]  = useState("");
+  const [newMemoText,   setNewMemoText]   = useState("");
+  const [noticeOpen,    setNoticeOpen]    = useState(false);
   // タスクの進捗状態（当日リセット）
   const STATUS_KEY = "task_status_" + new Date().toLocaleDateString("ja-JP").replace(/\//g,"-");
   const [taskStatus, setTaskStatusRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem(STATUS_KEY))||{};}catch{return{};} });
@@ -588,6 +596,64 @@ function App() {
               リセット
             </button>
           </div>
+
+          {/* 連絡事項カード */}
+          {(
+            <div style={{position:"sticky",top:155,zIndex:5,background:"#fffbe6",borderBottom:"1px solid #f0c840"}}>
+              {/* ヘッダー行 */}
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",cursor:"pointer"}} onClick={()=>setNoticeOpen(p=>!p)}>
+                <span style={{fontSize:15}}>📌</span>
+                <span style={{flex:1,fontSize:13,fontWeight:700,color:"#806000"}}>連絡事項・引き継ぎメモ</span>
+                {(adminNotices.length+memoNotices.length)>0&&<span style={{fontSize:11,color:"#a07800",background:"#fef3b0",borderRadius:4,padding:"2px 7px",fontWeight:600}}>{adminNotices.length+memoNotices.length}件</span>}
+                <span style={{fontSize:13,color:"#c0a020",transform:noticeOpen?"rotate(180deg)":"none",transition:"transform .2s"}}>▾</span>
+              </div>
+              {noticeOpen&&(
+                <div style={{background:"#fffef5",borderTop:"1px solid #f5e070",padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+                  {/* 管理者の注意事項（editMode時のみ追加可） */}
+                  {(adminNotices.length>0||editMode)&&(
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:"#a07000",marginBottom:6,letterSpacing:.05,display:"flex",alignItems:"center",gap:5}}>
+                        <span>🔒</span> 管理者・注意事項
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {adminNotices.map(n=>(
+                          <div key={n.id} style={{display:"flex",alignItems:"flex-start",gap:8,background:"#fff9e0",border:"1px solid #f0e060",borderRadius:8,padding:"8px 10px"}}>
+                            <div style={{flex:1,fontSize:13,color:"#504000",lineHeight:1.6,whiteSpace:"pre-wrap"}}><LinkText text={n.text}/></div>
+                            {editMode&&<button onClick={()=>setAdminNotices(p=>p.filter(x=>x.id!==n.id))} style={{background:"none",border:"none",color:"#c0a020",cursor:"pointer",fontSize:16,flexShrink:0,padding:"0 2px",lineHeight:1}}>✕</button>}
+                          </div>
+                        ))}
+                        {editMode&&(
+                          <div style={{display:"flex",gap:6}}>
+                            <input className="inp" style={{flex:1,fontSize:13,padding:"8px 10px",background:"#fffef0",borderColor:"#f0d840"}} value={newAdminText} onChange={e=>setNewAdminText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&newAdminText.trim()){setAdminNotices(p=>[...p,mkNotice(newAdminText)]);setNewAdminText("");}}} placeholder="注意事項を追加..."/>
+                            <button onClick={()=>{if(newAdminText.trim()){setAdminNotices(p=>[...p,mkNotice(newAdminText)]);setNewAdminText("");}}} style={{background:"#f5c842",border:"none",borderRadius:8,padding:"8px 12px",fontSize:13,fontWeight:700,color:"#604000",cursor:"pointer",flexShrink:0}}>追加</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {/* 引き継ぎメモ（誰でも追加・削除可） */}
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:"#0d7377",marginBottom:6,letterSpacing:.05,display:"flex",alignItems:"center",gap:5}}>
+                      <span>📝</span> 引き継ぎメモ
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {memoNotices.map(n=>(
+                        <div key={n.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f0fafa",border:"1px solid #b0e0e0",borderRadius:8,padding:"7px 10px"}}>
+                          <span style={{fontSize:11,color:"#90a0a0",flexShrink:0,fontFamily:"'IBM Plex Mono',monospace",whiteSpace:"nowrap"}}>{n.at}</span>
+                          <div style={{flex:1,fontSize:13,color:"#1a3a3a",lineHeight:1.5}}><LinkText text={n.text}/></div>
+                          <button onClick={()=>setMemoNotices(p=>p.filter(x=>x.id!==n.id))} style={{background:"none",border:"none",color:"#0d7377",cursor:"pointer",fontSize:16,flexShrink:0,padding:"0 2px",lineHeight:1}}>✕</button>
+                        </div>
+                      ))}
+                      <div style={{display:"flex",gap:6}}>
+                        <input className="inp" style={{flex:1,fontSize:13,padding:"8px 10px",background:"#f5fafa",borderColor:"#b0e0e0"}} value={newMemoText} onChange={e=>setNewMemoText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&newMemoText.trim()){setMemoNotices(p=>[...p,mkNotice(newMemoText)]);setNewMemoText("");}}} placeholder="引き継ぎメモを追加..."/>
+                        <button onClick={()=>{if(newMemoText.trim()){setMemoNotices(p=>[...p,mkNotice(newMemoText)]);setNewMemoText("");}}} style={{background:"#0d7377",border:"none",borderRadius:8,padding:"8px 12px",fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>追加</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {sorted.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📋</div><div style={{fontSize:15}}>{editMode?"下の「＋ 作業追加」から追加してください。":"編集ボタンを押すと作業を追加できます。"}</div></div>}
           {sorted.map(task=>(
