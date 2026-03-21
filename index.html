@@ -255,11 +255,13 @@ function App() {
   // 起動時にID重複を自動修正
   useEffect(() => {
     const { tasks: fixedTasks, manuals: fixedManuals } = deduplicateIds(tasks, manuals);
-    const taskChanged = JSON.stringify(fixedTasks.map(t=>t.id)) !== JSON.stringify(tasks.map(t=>t.id))
-      || fixedTasks.some((t,i)=>JSON.stringify(t.items.map(x=>x.id))!==JSON.stringify(tasks[i]?.items?.map(x=>x.id)));
-    const manChanged = JSON.stringify(fixedManuals) !== JSON.stringify(manuals);
-    if (taskChanged) setTasks(fixedTasks);
-    if (manChanged)  setManuals(fixedManuals);
+    // IDのみ比較（翻訳データなどを含めた全比較は避ける）
+    const allTaskIds   = t => JSON.stringify([t.id, ...t.items.map(i=>i.id)]);
+    const allManIds    = m => JSON.stringify([m.id, ...(m.subcategories||[]).flatMap(s=>[s.id,...(s.items||[]).map(i=>i.id)])]);
+    const taskChanged  = fixedTasks.some((t,i)=>allTaskIds(t)!==allTaskIds(tasks[i]||{}));
+    const manChanged   = fixedManuals.some((m,i)=>allManIds(m)!==allManIds(manuals[i]||{}));
+    if (taskChanged)  setTasks(fixedTasks);
+    if (manChanged)   setManuals(fixedManuals);
   }, []);
 
   const saveCfg = patch => { const n={lang,enabledLangs,passcode,...patch}; saveJ(CFG_KEY,n); return n; };
@@ -412,13 +414,28 @@ function App() {
 
   /* -- スケジュール CRUD -- */
   const addTask  = () => { if(!newTask.title.trim()) return; setTasks(p=>[...p,{...newTask,id:uid(),items:[],translations:{}}]); setShowAddTask(false); setNewTask({hour:9,minute:0,endHour:null,endMinute:0,days:[],title:"",summary:""}); };
-  const saveTask = t => { setTasks(p=>p.map(x=>x.id===t.id?{...x,...t,translations:{}}:x)); setEditTask(null); };
+  const saveTask = t => {
+    setTasks(p=>p.map(x=>{
+      if(x.id!==t.id) return x;
+      // タイトル・概要・実施日が変わった場合のみ翻訳クリア
+      const changed = x.title!==t.title || x.summary!==t.summary || x.date!==t.date;
+      return {...x,...t, translations: changed ? {} : (x.translations||{})};
+    }));
+    setEditTask(null);
+  };
   const deleteTask = id => openConfirm("この作業を削除しますか？",async()=>{ const t=tasks.find(x=>x.id===id); if(t) for(const i of t.items) if(isImgKey(i.image)) await deleteImage(i.image); setTasks(p=>p.filter(x=>x.id!==id)); setEditTask(null); if(expandedTask===id) setExpandedTask(null); });
   const reorderTasks = arr => setTasks(arr);
 
   /* -- カテゴリ CRUD -- */
   const addCat  = () => { if(!newCat.title.trim()) return; setManuals(p=>[...p,{...newCat,id:uid(),subcategories:[],translations:{}}]); setShowAddCat(false); setNewCat({title:"",summary:""}); };
-  const saveCat = m => { setManuals(p=>p.map(x=>x.id===m.id?{...x,...m,translations:{}}:x)); setEditCat(null); };
+  const saveCat = m => {
+    setManuals(p=>p.map(x=>{
+      if(x.id!==m.id) return x;
+      const changed = x.title!==m.title || x.summary!==m.summary;
+      return {...x,...m, translations: changed ? {} : (x.translations||{})};
+    }));
+    setEditCat(null);
+  };
   const deleteCat = id => openConfirm("このカテゴリを削除しますか？",async()=>{
     const m=manuals.find(x=>x.id===id);
     if(m) for(const s of m.subcategories||[]) for(const i of s.items||[]) if(isImgKey(i.image)) await deleteImage(i.image);
@@ -431,7 +448,14 @@ function App() {
 
   /* -- サブカテゴリ CRUD -- */
   const addSub  = catId => { if(!newSub.title.trim()) return; const s={...newSub,id:uid(),items:[],translations:{}}; setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:[...(m.subcategories||[]),s]}:m)); setShowAddSub(null); setNewSub({title:"",summary:""}); };
-  const saveSub = s => { setManuals(p=>p.map(m=>m.id===s.catId?{...m,subcategories:(m.subcategories||[]).map(x=>x.id===s.id?{...x,...s,translations:{}}:x)}:m)); setEditSub(null); };
+  const saveSub = s => {
+    setManuals(p=>p.map(m=>m.id===s.catId?{...m,subcategories:(m.subcategories||[]).map(x=>{
+      if(x.id!==s.id) return x;
+      const changed = x.title!==s.title || x.summary!==s.summary;
+      return {...x,...s, translations: changed ? {} : (x.translations||{})};
+    })}:m));
+    setEditSub(null);
+  };
   const deleteSub = (catId,subId) => openConfirm("このサブカテゴリを削除しますか？",async()=>{
     const m=manuals.find(x=>x.id===catId); const s=m?.subcategories?.find(x=>x.id===subId);
     if(s) for(const i of s.items||[]) if(isImgKey(i.image)) await deleteImage(i.image);
@@ -445,7 +469,15 @@ function App() {
   const addItem = (catId,subId) => { setEditItem({id:uid(),label:"",detail:"",image:null,translations:{},catId,subId,isNew:true}); };
   const saveItem = item => {
     const {catId,subId,isNew,...clean}=item;
-    const cleanNoTrans = isNew ? clean : {...clean,translations:{}};
+    const orig = (() => {
+      if(isNew) return null;
+      const cat = manuals.find(m=>m.id===item.catId)||tasks.find(t=>t.id===item.taskId);
+      if(!cat) return null;
+      const items = cat.items || cat.subcategories?.find(s=>s.id===item.subId)?.items || [];
+      return items.find(i=>i.id===clean.id);
+    })();
+    const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
+    const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
     setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:isNew?[...s.items,clean]:s.items.map(i=>i.id===clean.id?cleanNoTrans:i)}:s)}:m));
     setEditItem(null);
   };
@@ -470,7 +502,15 @@ function App() {
 
   const saveTaskItem = item => {
     const {taskId,isNew,...clean}=item;
-    const cleanNoTrans = isNew ? clean : {...clean,translations:{}};
+    const orig = (() => {
+      if(isNew) return null;
+      const cat = manuals.find(m=>m.id===item.catId)||tasks.find(t=>t.id===item.taskId);
+      if(!cat) return null;
+      const items = cat.items || cat.subcategories?.find(s=>s.id===item.subId)?.items || [];
+      return items.find(i=>i.id===clean.id);
+    })();
+    const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
+    const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
     setTasks(p=>p.map(t=>t.id===taskId?{...t,items:isNew?[...(t.items||[]),clean]:t.items.map(i=>i.id===clean.id?cleanNoTrans:i)}:t));
     setEditItem(null);
   };
