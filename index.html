@@ -729,6 +729,10 @@ function App() {
                           setLinkedItem(null);
                           showToast("ok","保存しました");
                         }}>保存する</button>
+                        <button className="btnD" onClick={()=>openConfirm("このリンクを削除しますか？",()=>{
+                          setTasks(p=>p.map(t=>t.id===linkedItem.taskId?{...t,items:t.items.filter(i=>i.id!==linkedItem.id)}:t));
+                          setLinkedItem(null);
+                        })}>削除する</button>
                         <button className="btnG" onClick={()=>setLinkedItem(null)}>キャンセル</button>
                       </div>
                     </div>
