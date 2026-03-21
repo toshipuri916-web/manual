@@ -207,6 +207,10 @@ function App() {
         .sub-row:active{background:#eae7e0;}
         .steps-panel{background:#faf8f4;border-left:3px solid #0d7377;margin-left:0;border-bottom:1px solid #d8d4cc;}
         .step-indent{padding-left:8px;}
+        .pri-badge{display:inline-flex;align-items:center;gap:3px;border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;letter-spacing:.03em;white-space:nowrap;}
+        .pri-low{background:#e8f4e8;color:#3a7a3a;}
+        .pri-high{background:#fff3e0;color:#c07000;}
+        .pri-top{background:#fde8e8;color:#c03030;}
         /* drag list */
         .drag-item{display:flex;align-items:center;background:#fff;border:1px solid #eae7e0;border-radius:12px;margin-bottom:8px;overflow:hidden;}
         .drag-item.dov{border-color:#1a1a20;border-style:dashed;} .drag-item.dra{opacity:.4;}
@@ -456,12 +460,15 @@ function App() {
               <div key={task.id}>
                 <div className={`cat-row${expandedTask===task.id?" expanded":""}`} onClick={()=>setExpandedTask(expandedTask===task.id?null:task.id)}>
                   {/* 時刻：左側中央寄せ */}
-                  <div style={{minWidth:90,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRight:"1px solid #eae7e0",paddingRight:12,marginRight:12,gap:2}}>
+                  <div style={{minWidth:90,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRight:"1px solid #eae7e0",paddingRight:12,marginRight:12,gap:3}}>
                     <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700,color:"#1a1a20",lineHeight:1}}>{fmt(task.hour,task.minute)}</span>
                     {task.endHour!=null&&task.endHour!==""&&<>
                       <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#b0ada8",lineHeight:1}}>↓</span>
                       <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700,color:"#908e88",lineHeight:1}}>{fmt(task.endHour,task.endMinute??0)}</span>
                     </>}
+                    {task.priority==="low"&&<span className="pri-badge pri-low">持越可</span>}
+                    {task.priority==="high"&&<span className="pri-badge pri-high">重要</span>}
+                    {task.priority==="top"&&<span className="pri-badge pri-top">最重要</span>}
                   </div>
                   {/* 右側：曜日＋実施日・作業名・概要 */}
                   <div style={{flex:1,minWidth:0}}>
@@ -470,7 +477,7 @@ function App() {
                       {(getT(task,"date",lang)||task.date)&&<span style={{fontSize:12,color:"#706e68",background:"#eae7e0",borderRadius:5,padding:"3px 8px",fontWeight:500}}>{getT(task,"date",lang)||task.date}</span>}
                     </div>
                     <div style={{fontSize:16,fontWeight:700,color:"#1a1a20"}}>{getT(task,"title",lang)}</div>
-                    {getT(task,"summary",lang)&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}>{getT(task,"summary",lang)}</div>}
+                    {getT(task,"summary",lang)&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}><LinkText text={getT(task,"summary",lang)}/></div>}
                   </div>
                   <div style={{fontSize:18,color:expandedTask===task.id?"#1a1a20":"#c8c4bc",fontWeight:700,transition:"transform .2s",transform:expandedTask===task.id?"rotate(90deg)":"none",flexShrink:0}}>›</div>
                   {editMode&&<button onClick={e=>{e.stopPropagation();setEditTask({...task});}} style={{background:expandedTask===task.id?"rgba(255,255,255,.15)":"#eae7e0",border:"none",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
@@ -516,7 +523,7 @@ function App() {
                 <div style={{fontSize:18,color:expandedCat===cat.id?"#1a1a20":"#c8c4bc",fontWeight:700,transition:"transform .2s",transform:expandedCat===cat.id?"rotate(90deg)":"none",flexShrink:0}}>›</div>
                 <div style={{flex:1}}>
                   <div className="cat-title" style={{fontSize:16,fontWeight:700,color:"#1a1a20"}}>{getT(cat,"title",lang)}</div>
-                  {getT(cat,"summary",lang)&&<div className="cat-summary" style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}>{getT(cat,"summary",lang)}</div>}
+                  {getT(cat,"summary",lang)&&<div className="cat-summary" style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}><LinkText text={getT(cat,"summary",lang)}/></div>}
                 </div>
                 {editMode&&<button onClick={e=>{e.stopPropagation();setEditCat({...cat});}} style={{background:"#eae7e0",border:"none",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
               </div>
@@ -534,7 +541,7 @@ function App() {
                         <div style={{width:8,height:8,borderRadius:"50%",background:(selSub?.catId===cat.id && selSub?.subId===sub.id)?"#0d7377":"#c0bcb5",flexShrink:0,transition:"background .15s"}}/>
                         <div style={{flex:1}}>
                           <div className="sub-title" style={{fontSize:15,fontWeight:600,color:"#1a1a20"}}>{getT(sub,"title",lang)}</div>
-                          {getT(sub,"summary",lang)&&<div className="sub-summary" style={{fontSize:12,color:"#908e88",marginTop:2}}>{getT(sub,"summary",lang)}</div>}
+                          {getT(sub,"summary",lang)&&<div className="sub-summary" style={{fontSize:12,color:"#908e88",marginTop:2}}><LinkText text={getT(sub,"summary",lang)}/></div>}
                         </div>
                         {editMode&&<button onClick={e=>{e.stopPropagation();setEditSub({...sub,catId:cat.id});}} style={{background:"#e0ddd6",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
                       </div>
@@ -591,7 +598,7 @@ function App() {
             </div>
             <div className="sp">
               <div style={{fontSize:20,fontWeight:700,marginBottom:14}}>{getT(selItem,"label",lang)||"（手順名未設定）"}</div>
-              <div style={{fontSize:15,color:"#606060",lineHeight:1.9,whiteSpace:"pre-wrap",marginBottom:28}}>{getT(selItem,"detail",lang)||"詳細説明なし"}</div>
+              <div style={{fontSize:15,color:"#606060",lineHeight:1.9,whiteSpace:"pre-wrap",marginBottom:28}}><LinkText text={getT(selItem,"detail",lang)||"詳細説明なし"}/></div>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {editMode&&<button className="btnP" onClick={()=>{setEditItem({...selItem});setSelItem(null);}}>編集する</button>}
                 <button className="btnG" onClick={()=>setSelItem(null)}>← 戻る</button>
@@ -691,6 +698,25 @@ function App() {
   );
 }
 
+
+
+/* -- LinkText: URLを自動リンク化 -- */
+function LinkText({ text, style }) {
+  if (!text) return null;
+  const URL_RE = /(https?:\/\/[^\s\u3000-\u9fff\uff00-\uffef、。！？「」【】]+)/g;
+  const parts = text.split(URL_RE);
+  return (
+    <span style={style}>
+      {parts.map((p, i) =>
+        URL_RE.test(p)
+          ? <a key={i} href={p} target="_blank" rel="noopener noreferrer"
+              style={{color:"#0d7377",textDecoration:"underline",wordBreak:"break-all"}}
+              onClick={e=>e.stopPropagation()}>{p}</a>
+          : <span key={i}>{p}</span>
+      )}
+    </span>
+  );
+}
 
 /* -- DragList（カテゴリ・サブカテゴリ・タスク共通の並び替えリスト） -- */
 function DragList({ items, onReorder, editMode, showToast, renderItem }) {
@@ -857,6 +883,17 @@ function TaskFields({ task, onChange }) {
       <div style={{marginBottom:20}}>
         <label className="lbl">実施日（任意）</label>
         <input className="inp" value={task.date||""} onChange={e=>onChange(p=>({...p,date:e.target.value}))} placeholder="例：毎月1日、年末年始など"/>
+      </div>
+      <div style={{marginBottom:20}}>
+        <label className="lbl">重要度（任意）</label>
+        <div style={{display:"flex",gap:8}}>
+          {[["","なし"],["low","持ち越し可"],["high","重要"],["top","最重要"]].map(([v,l])=>(
+            <button key={v} type="button" onClick={()=>onChange(p=>({...p,priority:v}))}
+              style={{flex:1,padding:"11px 0",borderRadius:10,border:`1.5px solid ${(task.priority||"")===""+v?"#1a1a20":"#dedad0"}`,background:(task.priority||"")===""+v?"#1a1a20":"#fff",color:(task.priority||"")===""+v?"#f0eeea":"#908e88",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+              {l}
+            </button>
+          ))}
+        </div>
       </div>
       <div style={{marginBottom:20}}><label className="lbl">作業名</label><input className="inp" value={task.title} onChange={e=>onChange(p=>({...p,title:e.target.value}))} placeholder="例：朝礼"/></div>
       <div style={{marginBottom:24}}><label className="lbl">概要（任意）</label><textarea className="inp" value={task.summary||""} onChange={e=>onChange(p=>({...p,summary:e.target.value}))} placeholder="作業の概要を入力..." style={{minHeight:80}}/></div>
