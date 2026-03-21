@@ -82,15 +82,33 @@ const saveJ = (key,v) => { try { localStorage.setItem(key,JSON.stringify(v)); } 
 const getT  = (obj,field,lang) => { if(!obj) return ""; if(!lang||lang==="ja") return obj[field]||""; return obj.translations?.[lang]?.[field]||obj[field]||""; };
 
 const ALL_LANGS = [
-  {code:"ja",label:"日本語",    native:"日本語",     flag:"🇯🇵"},
-  {code:"en",label:"英語",      native:"English",    flag:"🇺🇸"},
-  {code:"zh",label:"中国語",    native:"中文",        flag:"🇨🇳"},
-  {code:"vi",label:"ベトナム語",native:"Tiếng Việt", flag:"🇻🇳"},
-  {code:"ko",label:"韓国語",    native:"한국어",      flag:"🇰🇷"},
-  {code:"th",label:"タイ語",    native:"ภาษาไทย",    flag:"🇹🇭"},
-  {code:"tl",label:"タガログ語",native:"Tagalog",    flag:"🇵🇭"},
+  {code:"ja", label:"日本語",        native:"日本語",          flag:"🇯🇵"},
+  {code:"en", label:"英語",          native:"English",         flag:"🇺🇸"},
+  {code:"zh", label:"中国語",        native:"中文",             flag:"🇨🇳"},
+  {code:"vi", label:"ベトナム語",    native:"Tiếng Việt",      flag:"🇻🇳"},
+  {code:"ko", label:"韓国語",        native:"한국어",           flag:"🇰🇷"},
+  {code:"tl", label:"タガログ語",    native:"Tagalog",         flag:"🇵🇭"},
+  {code:"ne", label:"ネパール語",    native:"नेपाली",           flag:"🇳🇵"},
+  {code:"pt", label:"ポルトガル語",  native:"Português",       flag:"🇧🇷"},
+  {code:"id", label:"インドネシア語",native:"Bahasa Indonesia", flag:"🇮🇩"},
+  {code:"my", label:"ミャンマー語",  native:"မြန်မာဘာသာ",      flag:"🇲🇲"},
+  {code:"th", label:"タイ語",        native:"ภาษาไทย",         flag:"🇹🇭"},
+  {code:"si", label:"シンハラ語",    native:"සිංහල",           flag:"🇱🇰"},
+  {code:"km", label:"クメール語",    native:"ភាសាខ្មែរ",        flag:"🇰🇭"},
+  {code:"hi", label:"ヒンディー語",  native:"हिन्दी",           flag:"🇮🇳"},
+  {code:"bn", label:"ベンガル語",    native:"বাংলা",            flag:"🇧🇩"},
+  {code:"mn", label:"モンゴル語",    native:"Монгол",          flag:"🇲🇳"},
+  {code:"uz", label:"ウズベク語",    native:"O'zbek",          flag:"🇺🇿"},
+  {code:"es", label:"スペイン語",    native:"Español",         flag:"🇪🇸"},
+  {code:"ru", label:"ロシア語",      native:"Русский",         flag:"🇷🇺"},
+  {code:"uk", label:"ウクライナ語",  native:"Українська",      flag:"🇺🇦"},
 ];
-const MM_CODES = {en:"en-US",zh:"zh-CN",vi:"vi-VN",ko:"ko-KR",th:"th-TH",tl:"tl-PH"};
+const MM_CODES = {
+  en:"en-US", zh:"zh-CN", vi:"vi-VN", ko:"ko-KR", tl:"tl-PH",
+  ne:"ne-NP", pt:"pt-BR", id:"id-ID", my:"my-MM", th:"th-TH",
+  si:"si-LK", km:"km-KH", hi:"hi-IN", bn:"bn-BD", mn:"mn-MN",
+  uz:"uz-UZ", es:"es-ES", ru:"ru-RU", uk:"uk-UA",
+};
 
 /* ======================================═
    App
@@ -408,7 +426,13 @@ function App() {
       const newManuals=await Promise.all(manuals.map(async m=>({...await tObj(m),subcategories:await Promise.all((m.subcategories||[]).map(async s=>({...await tObj(s),items:await Promise.all(s.items.map(tItem))})))})));
       setTasks(newTasks); setManuals(newManuals); setLang(code);
       showToast("ok",`${li.label}に翻訳しました`);
-    } catch(e){ showToast("err","翻訳エラー: "+e.message); }
+    } catch(e){
+      if(e.message==="LIMIT"){
+        showToast("err","本日の翻訳文字数の上限に達しました。明日また試してください。");
+      } else {
+        showToast("err","翻訳エラー: "+e.message);
+      }
+    }
     setTransProgress(null);
   };
 
