@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="theme-color" content="#1a1a20"/>
+  <title>作業マニュアル</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>html,body{margin:0;padding:0;background:#f0ede8;}#root{min-height:100vh;}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+/* ======================================═
+   IndexedDB
+====================================═== */
+const IDB_NAME = "task_manual_db", IDB_STORE = "images";
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(IDB_STORE);
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbRun(mode, fn) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, mode);
+    fn(tx.objectStore(IDB_STORE), res, rej);
+    tx.onerror = e => rej(e.target.error);
+  });
+}
+const idbSet    = (k,v) => idbRun("readwrite",(s,res)=>{ s.put(v,k); s.transaction.oncomplete=res; });
+const idbDel    = k     => idbRun("readwrite",(s,res)=>{ s.delete(k); s.transaction.oncomplete=res; });
+const idbGetAll = ()    => idbRun("readonly",(s,res)=>{
+  const rk=s.getAllKeys(), rv=s.getAll(); let keys,vals;
+  rk.onsuccess=e=>{keys=e.target.result; if(vals){const m={};keys.forEach((k,i)=>m[k]=vals[i]);res(m);}};
+  rv.onsuccess=e=>{vals=e.target.result; if(keys){const m={};keys.forEach((k,i)=>m[k]=vals[i]);res(m);}};
+});
+const idbClear = () => idbRun("readwrite",(s,res)=>{ s.clear(); s.transaction.oncomplete=res; });
+
+/* ======================================═
+   画像圧縮
+====================================═== */
+const compressImage = (file, maxPx=1200, q=0.75) => new Promise(res => {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const s=Math.min(1,maxPx/Math.max(img.width,img.height));
+      const w=Math.round(img.width*s), h=Math.round(img.height*s);
+      const c=document.createElement("canvas"); c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      res(c.toDataURL("image/jpeg",q));
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ======================================═
+   定数
+====================================═== */
+const DAYS      = ["月","火","水","木","金","土","日"];
+const SCH_KEY   = "manual_sch_v1";
+const MAN_KEY   = "manual_cat_v2";   // v2 = has subcategories
+const CFG_KEY   = "manual_cfg_v1";
+const IMG_PRE   = "img_";
+const isImgKey  = v => typeof v==="string" && v.startsWith(IMG_PRE);
+const fmt       = (h,m) => `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+const fmtRange  = (sh,sm,eh,em) => { const s=fmt(sh,sm); return (eh==null||eh==="") ? `${s}〜` : `${s}〜${fmt(eh,em??0)}`; };
+let _uid = 1000;
+const uid = () => String(++_uid);
+const loadJ = key => { try { const r=localStorage.getItem(key); return r?JSON.parse(r):null; } catch { return null; } };
+const saveJ = (key,v) => { try { localStorage.setItem(key,JSON.stringify(v)); } catch {} };
+const getT  = (obj,field,lang) => { if(!obj) return ""; if(!lang||lang==="ja") return obj[field]||""; return obj.translations?.[lang]?.[field]||obj[field]||""; };
+
+const ALL_LANGS = [
+  {code:"ja",label:"日本語",    native:"日本語",     flag:"🇯🇵"},
+  {code:"en",label:"英語",      native:"English",    flag:"🇺🇸"},
+  {code:"zh",label:"中国語",    native:"中文",        flag:"🇨🇳"},
+  {code:"vi",label:"ベトナム語",native:"Tiếng Việt", flag:"🇻🇳"},
+  {code:"ko",label:"韓国語",    native:"한국어",      flag:"🇰🇷"},
+  {code:"th",label:"タイ語",    native:"ภาษาไทย",    flag:"🇹🇭"},
+  {code:"tl",label:"タガログ語",native:"Tagalog",    flag:"🇵🇭"},
+];
+const MM_CODES = {en:"en-US",zh:"zh-CN",vi:"vi-VN",ko:"ko-KR",th:"th-TH",tl:"tl-PH"};
+
+/* ======================================═
+   App
+====================================═== */
+function App() {
+  const [tasks,   setTasksRaw]   = useState(() => loadJ(SCH_KEY) ?? []);
+  const [manuals, setManualsRaw] = useState(() => loadJ(MAN_KEY) ?? []);
+  const [imgCache,setImgCache]   = useState({});
+
+  const cfg0 = loadJ(CFG_KEY) ?? {};
+  const [lang,         setLangR]         = useState(cfg0.lang         ?? "ja");
+  const [enabledLangs, setEnabledLangsR] = useState(cfg0.enabledLangs ?? ["ja","en"]);
+  const [passcode,     setPasscodeR]     = useState(cfg0.passcode     ?? "");
+
+  const [tab,        setTab]        = useState("schedule");
+  const [editMode,   setEditMode]   = useState(false);
+  const [toast,      setToast]      = useState(null);
+  const [confirm,    setConfirm]    = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [passModal,    setPassModal]    = useState(null);
+  const [passDigits,   setPassDigits]   = useState([]);
+  const [passError,    setPassError]    = useState(false);
+  const [transProgress,setTransProgress]= useState(null);
+
+  // schedule
+  const [editTask,    setEditTask]    = useState(null);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTask,     setNewTask]     = useState({hour:9,minute:0,endHour:null,endMinute:0,days:[],title:"",summary:""});
+
+  // manual accordion
+  const [expandedCat,  setExpandedCat]  = useState(null); // catId
+  const [expandedTask, setExpandedTask] = useState(null); // taskId
+  const [selSub,      setSelSub]      = useState(null);  // {catId, subId}
+
+  // manual edit
+  const [editCat,    setEditCat]    = useState(null);
+  const [showAddCat, setShowAddCat] = useState(false);
+  const [newCat,     setNewCat]     = useState({title:"",summary:""});
+  const [editSub,    setEditSub]    = useState(null);
+  const [showAddSub, setShowAddSub] = useState(null); // catId
+  const [newSub,     setNewSub]     = useState({title:"",summary:""});
+
+  // steps
+  const [selItem,  setSelItem]  = useState(null);
+  const [editItem, setEditItem] = useState(null);
+
+  const importRef = useRef();
+
+  useEffect(() => {
+    // inject fonts
+    if (!document.getElementById('app-fonts')) {
+      const link = document.createElement('link');
+      link.id = 'app-fonts';
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap';
+      document.head.appendChild(link);
+    }
+    // inject CSS
+    if (!document.getElementById('app-styles')) {
+      const style = document.createElement('style');
+      style.id = 'app-styles';
+      style.textContent = `
+        *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+        ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:#c8c4bc;border-radius:2px;}
+        .overlay{position:fixed;inset:0;background:rgba(10,9,7,.6);z-index:100;display:flex;align-items:flex-end;justify-content:center;}
+        .sheet{background:#faf8f4;border-radius:24px 24px 0 0;width:100%;max-width:800px;max-height:92vh;overflow-y:auto;padding-bottom:env(safe-area-inset-bottom,20px);}
+        .dh{width:44px;height:5px;background:#dedad0;border-radius:3px;margin:14px auto 0;}
+        .sp{padding:26px 22px 32px;}
+        .inp{background:#fff;border:1.5px solid #dedad0;border-radius:12px;padding:14px 16px;font-family:inherit;font-size:16px;color:#1a1a20;outline:none;width:100%;transition:border-color .15s;}
+        .inp:focus{border-color:#1a1a20;} textarea.inp{resize:vertical;min-height:100px;}
+        select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23908e88' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:42px;}
+        .btnP{background:#1a1a20;color:#f5f3ef;border:none;border-radius:14px;padding:16px;font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;width:100%;}
+        .btnG{background:#fff;border:1.5px solid #dedad0;border-radius:14px;padding:15px;font-family:inherit;font-size:15px;color:#1a1a20;cursor:pointer;width:100%;font-weight:500;}
+        .btnD{background:#fde8e8;border:1.5px solid #f5c5c5;border-radius:14px;padding:15px;font-family:inherit;font-size:15px;color:#c05050;cursor:pointer;width:100%;font-weight:500;}
+        .dtog{padding:13px 0;border-radius:10px;font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;cursor:pointer;border:1.5px solid #dedad0;background:#fff;color:#908e88;flex:1;text-align:center;}
+        .dtog.on{background:#1a1a20;color:#f5f3ef;border-color:#1a1a20;} .dtog.all{min-width:52px;flex:none;}
+        .drop{border:2px dashed #ccc9c0;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;padding:36px 16px;}
+        .lbl{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#908e88;display:block;margin-bottom:8px;letter-spacing:.04em;}
+        .io{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);border-radius:9px;padding:8px 12px;font-family:inherit;font-size:13px;font-weight:600;color:#f0eeea;cursor:pointer;white-space:nowrap;}
+        .io:active{background:rgba(255,255,255,.2);} .io.em{background:rgba(250,200,80,.2);border-color:rgba(250,200,80,.5);color:#f5c842;}
+        .tab-btn{flex:1;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:#60605a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:100%;padding:0;}
+        .tab-btn.on{color:#f0eeea;} .tab-bar{height:3px;border-radius:2px;width:28px;background:transparent;} .tab-btn.on .tab-bar{background:#f0eeea;}
+        .toast{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);padding:14px 26px;border-radius:14px;font-size:15px;font-weight:600;z-index:999;white-space:nowrap;box-shadow:0 4px 28px rgba(0,0,0,.22);pointer-events:none;animation:fu .2s ease;}
+        @keyframes fu{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+        .sdot{width:7px;height:7px;border-radius:50%;background:#4caf7d;display:inline-block;margin-right:5px;}
+        .tr{font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:500;line-height:1;white-space:nowrap;}
+        .tsep{color:#908e88;font-family:'IBM Plex Mono',monospace;font-size:20px;padding:0 4px;flex-shrink:0;}
+        .hsep{display:flex;align-items:center;gap:12px;padding:6px 16px;background:#f0ede8;position:sticky;top:92px;z-index:5;}
+        .lrow{display:flex;align-items:stretch;background:#fff;border-bottom:1px solid #eae7e0;}
+        .lrow:last-child{border-bottom:none;} .lrow:active{background:#f5f2ec;}
+        /* step drag */
+        .sc{background:#fff;border-radius:14px;border:1px solid #eae7e0;overflow:hidden;display:flex;align-items:center;}
+        .sc.dov{border-color:#1a1a20;border-style:dashed;} .sc.dra{opacity:.4;}
+        .grip{width:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#c8c4bc;font-size:18px;letter-spacing:-2px;align-self:stretch;touch-action:none;cursor:grab;}
+        /* passcode */
+        .pdot{width:16px;height:16px;border-radius:50%;border:2px solid #dedad0;transition:background .15s;}
+        .pdot.on{background:#1a1a20;border-color:#1a1a20;} .pdot.err{background:#c05050;border-color:#c05050;}
+        .pk{flex:1;aspect-ratio:1;background:#fff;border:1.5px solid #eae7e0;border-radius:12px;font-size:22px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+        .pk:active{background:#f0ede8;}
+        .ebadge{background:rgba(250,200,80,.15);border:1px solid rgba(250,200,80,.4);color:#d4a800;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;}
+        @keyframes spin{to{transform:rotate(360deg);}}
+        @keyframes fu{from{opacity:0;transform:translateX(-50%) translateY(8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+        /* manual accordion */
+        .cat-row{display:flex;align-items:center;cursor:pointer;padding:15px 16px;background:#fff;border-bottom:1px solid #eae7e0;gap:10px;transition:background .12s;}
+        .cat-row.expanded{background:#e0f2f2;border-left:4px solid #0d7377;}
+        .cat-row.expanded .cat-title{color:#1a1a20 !important;font-weight:800 !important;}
+        .cat-row.expanded .cat-summary{color:#706e68 !important;}
+        .sub-list{background:#f0ede8;border-bottom:1px solid #dedad0;border-left:3px solid #0d7377;margin-left:0;}
+        .sub-row{display:flex;align-items:center;padding:12px 16px 12px 24px;cursor:pointer;border-bottom:1px solid #e4e0d8;gap:10px;transition:background .12s;background:#f8f5f0;}
+        .sub-row:last-child{border-bottom:none;}
+        .sub-row.sel{background:#c5e8e8;border-left:4px solid #0d7377;}
+        .sub-row.sel .sub-title{color:#1a1a20 !important;font-weight:700 !important;}
+        .sub-row.sel .sub-summary{color:#706e68 !important;}
+        .sub-row:active{background:#eae7e0;}
+        .steps-panel{background:#faf8f4;border-left:3px solid #0d7377;margin-left:0;border-bottom:1px solid #d8d4cc;}
+        .step-indent{padding-left:8px;}
+        /* drag list */
+        .drag-item{display:flex;align-items:center;background:#fff;border:1px solid #eae7e0;border-radius:12px;margin-bottom:8px;overflow:hidden;}
+        .drag-item.dov{border-color:#1a1a20;border-style:dashed;} .drag-item.dra{opacity:.4;}
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
+  useEffect(() => { idbGetAll().then(all=>setImgCache(all)).catch(()=>{}); }, []);
+
+  const saveCfg = patch => { const n={lang,enabledLangs,passcode,...patch}; saveJ(CFG_KEY,n); return n; };
+  const setLang         = v => { setLangR(v);         saveCfg({lang:v}); };
+  const setEnabledLangs = v => { setEnabledLangsR(v); saveCfg({enabledLangs:v}); };
+  const setPasscode     = v => { setPasscodeR(v);      saveCfg({passcode:v}); };
+  const setTasks   = u => setTasksRaw(p  => { const n=typeof u==="function"?u(p):u;  saveJ(SCH_KEY,n); return n; });
+  const setManuals = u => setManualsRaw(p => { const n=typeof u==="function"?u(p):u; saveJ(MAN_KEY,n); return n; });
+
+  const showToast   = (type,text) => { setToast({type,text}); setTimeout(()=>setToast(null),3000); };
+  const openConfirm = (msg,onOk)  => setConfirm({msg,onOk});
+  const resolveImg  = v => { if(!v) return null; return isImgKey(v)?(imgCache[v]??null):v; };
+
+  /* -- 編集モード -- */
+  const enterEdit = () => { if(!passcode){setEditMode(true);return;} setPassDigits([]); setPassError(false); setPassModal("enter"); };
+  const exitEdit  = () => setEditMode(false);
+
+  /* -- パスコード入力 -- */
+  const handleDigit = d => {
+    if(passDigits.length>=4) return;
+    const next=[...passDigits,d]; setPassDigits(next);
+    if(next.length<4) return;
+    const entered=next.join("");
+    if(passModal==="enter") {
+      if(entered===passcode){setEditMode(true);setPassModal(null);setPassDigits([]);}
+      else{setPassError(true);setTimeout(()=>{setPassDigits([]);setPassError(false);},700);}
+    } else if(passModal==="settings") {
+      if(entered===passcode){setPassModal(null);setPassDigits([]);setShowSettings(true);}
+      else{setPassError(true);setTimeout(()=>{setPassDigits([]);setPassError(false);},700);}
+    } else if(passModal==="change") {
+      if(entered===passcode){setTimeout(()=>{setPassDigits([]);setPassModal("set1");},200);}
+      else{setPassError(true);setTimeout(()=>{setPassDigits([]);setPassError(false);},700);}
+    } else if(passModal==="delete") {
+      if(entered===passcode){setPasscode("");setPassModal(null);setPassDigits([]);showToast("ok","パスコードを削除しました");}
+      else{setPassError(true);setTimeout(()=>{setPassDigits([]);setPassError(false);},700);}
+    } else if(passModal==="set1") {
+      setTimeout(()=>{setPassDigits([]);setPassModal({mode:"set2",first:entered});},200);
+    } else if(passModal?.mode==="set2") {
+      if(entered===passModal.first){setPasscode(entered);setPassModal(null);setPassDigits([]);showToast("ok","パスコードを設定しました");}
+      else{setPassError(true);setTimeout(()=>{setPassDigits([]);setPassError(false);},700);}
+    }
+  };
+
+  /* -- 画像 -- */
+  const saveImage = async (file,oldKey) => {
+    const data=await compressImage(file);
+    if(isImgKey(oldKey)) await idbDel(oldKey);
+    const key=`${IMG_PRE}${uid()}`; await idbSet(key,data);
+    setImgCache(p=>({...p,[key]:data})); return key;
+  };
+  const deleteImage = async key => { if(isImgKey(key)){await idbDel(key);setImgCache(p=>{const c={...p};delete c[key];return c;});} };
+
+  /* -- JSON 書き出し -- */
+  const handleExport = async () => {
+    try {
+      const allImgs=await idbGetAll();
+      const embedItems = items => items.map(i=>({...i,image:isImgKey(i.image)?(allImgs[i.image]??null):i.image}));
+      const embedCat   = m => ({...m, subcategories:(m.subcategories||[]).map(s=>({...s,items:embedItems(s.items||[])}))});
+      const json=JSON.stringify({version:6,exportedAt:new Date().toISOString(),
+        tasks:tasks.map(t=>({...t,items:embedItems(t.items||[])})),
+        manuals:manuals.map(embedCat)},null,2);
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(new Blob([json],{type:"application/json"}));
+      a.download=`manual_${new Date().toISOString().slice(0,10)}.json`; a.click();
+      showToast("ok","書き出し完了");
+    } catch(e){ showToast("err","書き出しエラー: "+e.message); }
+  };
+
+  /* -- JSON 読み込み -- */
+  const handleImport = e => {
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload = async ev => {
+      try {
+        const p=JSON.parse(ev.target.result);
+        if(!p.tasks||!Array.isArray(p.tasks)) throw new Error("tasksが見つかりません");
+        await idbClear();
+        const cache={};
+        const reEmbedItems = async items => Promise.all((items||[]).map(async i=>{
+          if(i.image?.startsWith("data:")){const k=`${IMG_PRE}${uid()}`;await idbSet(k,i.image);cache[k]=i.image;return{...i,image:k,translations:i.translations??{}};}
+          return {...i,translations:i.translations??{}};
+        }));
+        const newTasks   = await Promise.all(p.tasks.map(async t=>({...t,translations:t.translations||{},items:await reEmbedItems(t.items)})));
+        const newManuals = p.manuals ? await Promise.all(p.manuals.map(async m=>({
+          ...m, translations:m.translations||{},
+          subcategories: await Promise.all((m.subcategories||m.items?.map(i=>({...i,items:[]})) ||[]).map(async s=>({
+            ...s, translations:s.translations||{}, items:await reEmbedItems(s.items||[])
+          })))
+        }))) : [];
+        setImgCache(cache); setTasks(newTasks); setManuals(newManuals);
+        showToast("ok",`読み込み完了（${newTasks.length}件の作業）`);
+      } catch(err){ showToast("err","読み込みエラー: "+err.message); }
+    };
+    reader.readAsText(file); e.target.value="";
+  };
+
+  /* -- MyMemory 翻訳 -- */
+  const translateText = async (text,code) => {
+    if(!text?.trim()) return text;
+    const lp=`ja|${MM_CODES[code]||code}`;
+    const r=await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${lp}`);
+    const d=await r.json();
+    return d.responseData.translatedText||text;
+  };
+  const handleLangSwitch = async code => {
+    if(code==="ja"){setLang("ja");return;}
+    // すべての項目が翻訳済みかチェック
+    const allTranslated = tasks.every(t=>t.translations?.[code]) && manuals.every(m=>m.translations?.[code]);
+    if(allTranslated && tasks.length>0){setLang(code);return;}
+    const li=ALL_LANGS.find(l=>l.code===code);
+    setTransProgress(`${li.label}に翻訳中... 0%`);
+    try {
+      // 未翻訳の項目だけカウント・翻訳する
+      const needsT  = o => !o.translations?.[code]?.title;
+      const needsItem = i => !i.translations?.[code]?.label;
+      let done=0, total=0;
+      tasks.forEach(t=>{
+        if(needsT(t)) total+=2+(t.date?1:0);
+        t.items.forEach(i=>{ if(needsItem(i)) total+=2; });
+      });
+      manuals.forEach(m=>{
+        if(needsT(m)) total+=2;
+        (m.subcategories||[]).forEach(s=>{
+          if(needsT(s)) total+=2;
+          s.items.forEach(i=>{ if(needsItem(i)) total+=2; });
+        });
+      });
+      if(total===0){ setLang(code); setTransProgress(null); return; }
+      const tick=()=>setTransProgress(`${li.label}に翻訳中... ${Math.round(++done/total*100)}%`);
+      const tItem=async i=>{
+        if(!needsItem(i)) return i;
+        return {...i,translations:{...i.translations,[code]:{label:await translateText(i.label,code).then(v=>{tick();return v;}),detail:await translateText(i.detail||"",code).then(v=>{tick();return v;})}}};
+      };
+      const tObj=async (o,extra={})=>{
+        if(!needsT(o)) return {...o,...extra};
+        const tr={title:await translateText(o.title,code).then(v=>{tick();return v;}),summary:await translateText(o.summary||"",code).then(v=>{tick();return v;})};
+        if(o.date) tr.date=await translateText(o.date,code);
+        return {...o,...extra,translations:{...o.translations,[code]:tr}};
+      };
+      const newTasks=await Promise.all(tasks.map(async t=>({...await tObj(t),items:await Promise.all(t.items.map(tItem))})));
+      const newManuals=await Promise.all(manuals.map(async m=>({...await tObj(m),subcategories:await Promise.all((m.subcategories||[]).map(async s=>({...await tObj(s),items:await Promise.all(s.items.map(tItem))})))})));
+      setTasks(newTasks); setManuals(newManuals); setLang(code);
+      showToast("ok",`${li.label}に翻訳しました`);
+    } catch(e){ showToast("err","翻訳エラー: "+e.message); }
+    setTransProgress(null);
+  };
+
+  /* -- スケジュール CRUD -- */
+  const addTask  = () => { if(!newTask.title.trim()) return; setTasks(p=>[...p,{...newTask,id:uid(),items:[],translations:{}}]); setShowAddTask(false); setNewTask({hour:9,minute:0,endHour:null,endMinute:0,days:[],title:"",summary:""}); };
+  const saveTask = t => { setTasks(p=>p.map(x=>x.id===t.id?{...x,...t,translations:{}}:x)); setEditTask(null); };
+  const deleteTask = id => openConfirm("この作業を削除しますか？",async()=>{ const t=tasks.find(x=>x.id===id); if(t) for(const i of t.items) if(isImgKey(i.image)) await deleteImage(i.image); setTasks(p=>p.filter(x=>x.id!==id)); if(selTask?.id===id) setSelTask(null); setEditTask(null); });
+  const reorderTasks = arr => setTasks(arr);
+
+  /* -- カテゴリ CRUD -- */
+  const addCat  = () => { if(!newCat.title.trim()) return; setManuals(p=>[...p,{...newCat,id:uid(),subcategories:[],translations:{}}]); setShowAddCat(false); setNewCat({title:"",summary:""}); };
+  const saveCat = m => { setManuals(p=>p.map(x=>x.id===m.id?{...x,...m,translations:{}}:x)); setEditCat(null); };
+  const deleteCat = id => openConfirm("このカテゴリを削除しますか？",async()=>{
+    const m=manuals.find(x=>x.id===id);
+    if(m) for(const s of m.subcategories||[]) for(const i of s.items||[]) if(isImgKey(i.image)) await deleteImage(i.image);
+    setManuals(p=>p.filter(x=>x.id!==id));
+    if(expandedCat===id) setExpandedCat(null);
+    if(selSub?.catId===id) setSelSub(null);
+    setEditCat(null);
+  });
+  const reorderCats = arr => setManuals(arr);
+
+  /* -- サブカテゴリ CRUD -- */
+  const addSub  = catId => { if(!newSub.title.trim()) return; const s={...newSub,id:uid(),items:[],translations:{}}; setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:[...(m.subcategories||[]),s]}:m)); setShowAddSub(null); setNewSub({title:"",summary:""}); };
+  const saveSub = s => { setManuals(p=>p.map(m=>m.id===s.catId?{...m,subcategories:(m.subcategories||[]).map(x=>x.id===s.id?{...x,...s,translations:{}}:x)}:m)); setEditSub(null); };
+  const deleteSub = (catId,subId) => openConfirm("このサブカテゴリを削除しますか？",async()=>{
+    const m=manuals.find(x=>x.id===catId); const s=m?.subcategories?.find(x=>x.id===subId);
+    if(s) for(const i of s.items||[]) if(isImgKey(i.image)) await deleteImage(i.image);
+    setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).filter(x=>x.id!==subId)}:m));
+    if(selSub?.subId===subId) setSelSub(null);
+    setEditSub(null);
+  });
+  const reorderSubs = (catId,arr) => setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:arr}:m));
+
+  /* -- 手順 CRUD -- */
+  const addItem = (catId,subId) => { setEditItem({id:uid(),label:"",detail:"",image:null,translations:{},catId,subId,isNew:true}); };
+  const saveItem = item => {
+    const {catId,subId,isNew,...clean}=item;
+    const cleanNoTrans = isNew ? clean : {...clean,translations:{}};
+    setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:isNew?[...s.items,clean]:s.items.map(i=>i.id===clean.id?cleanNoTrans:i)}:s)}:m));
+    setEditItem(null);
+  };
+  const deleteItem = item => openConfirm("この手順を削除しますか？",async()=>{
+    if(isImgKey(item.image)) await deleteImage(item.image);
+    setManuals(p=>p.map(m=>m.id===item.catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===item.subId?{...s,items:s.items.filter(i=>i.id!==item.id)}:s)}:m));
+    setEditItem(null); setSelItem(null);
+  });
+  const reorderItems = (catId,subId,arr) => setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:arr}:s)}:m));
+
+  // schedule step CRUD (for task detail sheet)
+  const addTaskItem  = taskId => { setEditItem({id:uid(),label:"",detail:"",image:null,translations:{},taskId,isNew:true}); };
+  const saveTaskItem = item => {
+    const {taskId,isNew,...clean}=item;
+    const cleanNoTrans = isNew ? clean : {...clean,translations:{}};
+    setTasks(p=>p.map(t=>t.id===taskId?{...t,items:isNew?[...(t.items||[]),clean]:t.items.map(i=>i.id===clean.id?cleanNoTrans:i)}:t));
+    setEditItem(null);
+  };
+  const deleteTaskItem = item => openConfirm("この手順を削除しますか？",async()=>{
+    if(isImgKey(item.image)) await deleteImage(item.image);
+    setTasks(p=>p.map(t=>t.id===item.taskId?{...t,items:t.items.filter(i=>i.id!==item.id)}:t));
+    setEditItem(null); setSelItem(null);
+  });
+  const reorderTaskItems = (taskId,arr) => { setTasks(p=>p.map(t=>t.id===taskId?{...t,items:arr}:t)); setSelTask(p=>p?.id===taskId?{...p,items:arr}:p); };
+
+  const sorted = [...tasks].sort((a,b)=>a.hour*60+a.minute-(b.hour*60+b.minute));
+  const currentSub = selSub ? (manuals.find(m=>m.id===selSub.catId)?.subcategories||[]).find(s=>s.id===selSub.subId) : null;
+
+  return (
+    <div style={{minHeight:"100vh",background:"#f0ede8",fontFamily:"'Noto Sans JP',sans-serif",color:"#1a1a20",touchAction:"manipulation"}}>
+      <div style={{background:"#1a1a20",position:"sticky",top:0,zIndex:10,display:"flex",flexDirection:"column"}}>
+        <div style={{padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+            <span style={{fontSize:15,fontWeight:700,color:"#f0eeea",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>作業マニュアル</span>
+            <span style={{display:"flex",alignItems:"center"}}><span className="sdot"/><span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#4caf7d"}}>自動保存中</span></span>
+            {editMode && <span className="ebadge">編集中</span>}
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+            {enabledLangs.map(code=>{const l=ALL_LANGS.find(x=>x.code===code);if(!l)return null;return(<button key={code} className={`io${lang===code?" em":""}`} onClick={()=>handleLangSwitch(code)}><span style={{fontSize:15}}>{l.flag}</span><span style={{fontSize:11}}>{code==="ja"?"JP":code.toUpperCase()}</span></button>);})}
+            <button className={`io${editMode?" em":""}`} onClick={editMode?exitEdit:enterEdit}>{editMode?"編集終了":"編集"}</button>
+            <button className="io" onClick={()=>{if(passcode){setPassDigits([]);setPassError(false);setPassModal("settings");}else setShowSettings(true);}}>⚙️</button>
+          </div>
+        </div>
+        <div style={{display:"flex",height:40,borderTop:"1px solid rgba(255,255,255,.08)"}}>
+          <button className={`tab-btn${tab==="schedule"?" on":""}`} onClick={()=>setTab("schedule")}><span>タイムスケジュール</span><div className="tab-bar"/></button>
+          <button className={`tab-btn${tab==="manual"?" on":""}`} onClick={()=>setTab("manual")}><span>マニュアル</span><div className="tab-bar"/></button>
+        </div>
+      </div>
+
+      {toast && <div className="toast" style={{background:toast.type==="ok"?"#1a1a20":"#c05050",color:"#f5f3ef"}}>{toast.type==="ok"?"✓ ":"✕ "}{toast.text}</div>}
+      {transProgress && <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.7)",zIndex:500,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid rgba(255,255,255,.2)",borderTopColor:"#f0eeea",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><div style={{color:"#f0eeea",fontSize:16,fontWeight:600}}>{transProgress}</div></div>}
+      {tab==="schedule" && (
+        <div>
+          {sorted.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📋</div><div style={{fontSize:15}}>{editMode?"下の「＋ 作業追加」から追加してください。":"編集ボタンを押すと作業を追加できます。"}</div></div>}
+          {sorted.map(task=>(
+              <div key={task.id}>
+                <div className={`cat-row${expandedTask===task.id?" expanded":""}`} onClick={()=>setExpandedTask(expandedTask===task.id?null:task.id)}>
+                  {/* 時刻：左側中央寄せ */}
+                  <div style={{minWidth:90,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRight:"1px solid #eae7e0",paddingRight:12,marginRight:12,gap:2}}>
+                    <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700,color:"#1a1a20",lineHeight:1}}>{fmt(task.hour,task.minute)}</span>
+                    {task.endHour!=null&&task.endHour!==""&&<>
+                      <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#b0ada8",lineHeight:1}}>↓</span>
+                      <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700,color:"#908e88",lineHeight:1}}>{fmt(task.endHour,task.endMinute??0)}</span>
+                    </>}
+                  </div>
+                  {/* 右側：曜日＋実施日・作業名・概要 */}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
+                      {DAYS.map(d=><span key={d} style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 7px",borderRadius:5,fontWeight:500,background:task.days.includes(d)?"#1a1a20":"#eae7e0",color:task.days.includes(d)?"#f0eeea":"#b0ada8"}}>{d}</span>)}
+                      {(getT(task,"date",lang)||task.date)&&<span style={{fontSize:12,color:"#706e68",background:"#eae7e0",borderRadius:5,padding:"3px 8px",fontWeight:500}}>{getT(task,"date",lang)||task.date}</span>}
+                    </div>
+                    <div style={{fontSize:16,fontWeight:700,color:"#1a1a20"}}>{getT(task,"title",lang)}</div>
+                    {getT(task,"summary",lang)&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}>{getT(task,"summary",lang)}</div>}
+                  </div>
+                  <div style={{fontSize:18,color:expandedTask===task.id?"#1a1a20":"#c8c4bc",fontWeight:700,transition:"transform .2s",transform:expandedTask===task.id?"rotate(90deg)":"none",flexShrink:0}}>›</div>
+                  {editMode&&<button onClick={e=>{e.stopPropagation();setEditTask({...task});}} style={{background:expandedTask===task.id?"rgba(255,255,255,.15)":"#eae7e0",border:"none",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
+                </div>
+                {expandedTask===task.id&&(
+                  <div className="steps-panel" style={{padding:"16px"}}>
+                    <StepList
+                      items={task.items||[]}
+                      lang={lang}
+                      editMode={editMode}
+                      resolveImg={resolveImg}
+                      onAdd={()=>addTaskItem(task.id)}
+                      onTap={item=>setSelItem({...item,taskId:task.id})}
+                      onEdit={item=>setEditItem({...item,taskId:task.id})}
+                      onReorder={arr=>reorderTaskItems(task.id,arr)}
+                      showToast={showToast}
+                    />
+                  </div>
+                )}
+              </div>
+          ))}
+          {editMode&&expandedTask===null&&(
+            <div style={{padding:"12px 16px"}}>
+              <button onClick={()=>setShowAddTask(true)} style={{background:"transparent",color:"#908e88",border:"1.5px dashed #c8c4bc",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+                ＋ 作業追加
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {tab==="manual" && (
+        <div>
+          {manuals.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📖</div><div style={{fontSize:15}}>{editMode?"下の「＋ カテゴリ追加」から追加してください。":"編集ボタンを押すとカテゴリを追加できます。"}</div></div>}
+          <DragList
+            items={manuals}
+            onReorder={reorderCats}
+            editMode={editMode}
+            showToast={showToast}
+            renderItem={(cat,dragHandle)=>(
+            <div key={cat.id}>
+              <div className={`cat-row${expandedCat===cat.id?" expanded":""}`} onClick={()=>{ const next=expandedCat===cat.id?null:cat.id; setExpandedCat(next); setSelSub(null); }}>
+                {editMode&&dragHandle}
+                <div style={{fontSize:18,color:expandedCat===cat.id?"#1a1a20":"#c8c4bc",fontWeight:700,transition:"transform .2s",transform:expandedCat===cat.id?"rotate(90deg)":"none",flexShrink:0}}>›</div>
+                <div style={{flex:1}}>
+                  <div className="cat-title" style={{fontSize:16,fontWeight:700,color:"#1a1a20"}}>{getT(cat,"title",lang)}</div>
+                  {getT(cat,"summary",lang)&&<div className="cat-summary" style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}>{getT(cat,"summary",lang)}</div>}
+                </div>
+                {editMode&&<button onClick={e=>{e.stopPropagation();setEditCat({...cat});}} style={{background:"#eae7e0",border:"none",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
+              </div>
+              {expandedCat===cat.id && (
+                <div className="sub-list">
+                  <DragList
+                    items={cat.subcategories||[]}
+                    onReorder={arr=>reorderSubs(cat.id,arr)}
+                    editMode={editMode}
+                    showToast={showToast}
+                    renderItem={(sub,dragHandle)=>(
+                    <div key={sub.id}>
+                      <div className={`sub-row${selSub?.catId===cat.id && selSub?.subId===sub.id?" sel":""}`} onClick={()=>setSelSub(selSub?.subId===sub.id?null:{catId:cat.id,subId:sub.id})}>
+                        {editMode&&dragHandle}
+                        <div style={{width:8,height:8,borderRadius:"50%",background:(selSub?.catId===cat.id && selSub?.subId===sub.id)?"#0d7377":"#c0bcb5",flexShrink:0,transition:"background .15s"}}/>
+                        <div style={{flex:1}}>
+                          <div className="sub-title" style={{fontSize:15,fontWeight:600,color:"#1a1a20"}}>{getT(sub,"title",lang)}</div>
+                          {getT(sub,"summary",lang)&&<div className="sub-summary" style={{fontSize:12,color:"#908e88",marginTop:2}}>{getT(sub,"summary",lang)}</div>}
+                        </div>
+                        {editMode&&<button onClick={e=>{e.stopPropagation();setEditSub({...sub,catId:cat.id});}} style={{background:"#e0ddd6",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
+                      </div>
+                      {selSub?.catId===cat.id && selSub?.subId===sub.id && (
+                        <div className="steps-panel" style={{padding:"16px 16px 16px 24px"}}>
+                          <StepList
+                            items={sub.items||[]}
+                            lang={lang}
+                            editMode={editMode}
+                            resolveImg={resolveImg}
+                            onAdd={()=>addItem(cat.id,sub.id)}
+                            onTap={item=>setSelItem({...item,catId:cat.id,subId:sub.id})}
+                            onEdit={item=>setEditItem({...item,catId:cat.id,subId:sub.id})}
+                            onReorder={arr=>reorderItems(cat.id,sub.id,arr)}
+                            showToast={showToast}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    )}
+                  />
+                  {editMode&&(selSub===null||selSub?.catId!==cat.id)&&(
+                    <div style={{padding:"12px 16px"}}>
+                      <button onClick={()=>{setShowAddSub(cat.id);setNewSub({title:"",summary:""}); }} style={{background:"transparent",color:"#908e88",border:"1.5px dashed #c8c4bc",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+                        ＋ サブカテゴリ追加
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            )}
+          />
+          {editMode&&expandedCat===null&&(
+            <div style={{padding:"12px 16px"}}>
+              <button onClick={()=>setShowAddCat(true)} style={{background:"transparent",color:"#908e88",border:"1.5px dashed #c8c4bc",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+                ＋ カテゴリ追加
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {editTask&&(<div className="overlay" onClick={()=>setEditTask(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>作業を編集</div><TaskFields task={editTask} onChange={setEditTask}/><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>saveTask(editTask)}>保存する</button><button className="btnD" onClick={()=>deleteTask(editTask.id)}>削除する</button><button className="btnG" onClick={()=>setEditTask(null)}>キャンセル</button></div></div></div></div>)}
+      {showAddTask&&(<div className="overlay" onClick={()=>setShowAddTask(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>作業を追加</div><TaskFields task={newTask} onChange={setNewTask}/><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={addTask}>追加する</button><button className="btnG" onClick={()=>setShowAddTask(false)}>キャンセル</button></div></div></div></div>)}
+      {editCat&&(<div className="overlay" onClick={()=>setEditCat(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>カテゴリを編集</div><div style={{marginBottom:20}}><label className="lbl">カテゴリ名</label><input className="inp" value={editCat.title} onChange={e=>setEditCat(p=>({...p,title:e.target.value}))} placeholder="例：レジ操作"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={editCat.summary||""} onChange={e=>setEditCat(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>saveCat(editCat)}>保存する</button><button className="btnD" onClick={()=>deleteCat(editCat.id)}>削除する</button><button className="btnG" onClick={()=>setEditCat(null)}>キャンセル</button></div></div></div></div>)}
+      {showAddCat&&(<div className="overlay" onClick={()=>setShowAddCat(false)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>カテゴリを追加</div><div style={{marginBottom:20}}><label className="lbl">カテゴリ名</label><input className="inp" value={newCat.title} onChange={e=>setNewCat(p=>({...p,title:e.target.value}))} placeholder="例：レジ操作"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={newCat.summary||""} onChange={e=>setNewCat(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={addCat}>追加する</button><button className="btnG" onClick={()=>setShowAddCat(false)}>キャンセル</button></div></div></div></div>)}
+      {editSub&&(<div className="overlay" onClick={()=>setEditSub(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>サブカテゴリを編集</div><div style={{marginBottom:20}}><label className="lbl">サブカテゴリ名</label><input className="inp" value={editSub.title} onChange={e=>setEditSub(p=>({...p,title:e.target.value}))} placeholder="例：現金会計"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={editSub.summary||""} onChange={e=>setEditSub(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>saveSub(editSub)}>保存する</button><button className="btnD" onClick={()=>deleteSub(editSub.catId,editSub.id)}>削除する</button><button className="btnG" onClick={()=>setEditSub(null)}>キャンセル</button></div></div></div></div>)}
+      {showAddSub&&(<div className="overlay" onClick={()=>setShowAddSub(null)}><div className="sheet" onClick={e=>e.stopPropagation()}><div className="dh"/><div className="sp"><div style={{fontSize:18,fontWeight:700,marginBottom:24}}>サブカテゴリを追加</div><div style={{marginBottom:20}}><label className="lbl">サブカテゴリ名</label><input className="inp" value={newSub.title} onChange={e=>setNewSub(p=>({...p,title:e.target.value}))} placeholder="例：現金会計"/></div><div style={{marginBottom:24}}><label className="lbl">説明（任意）</label><textarea className="inp" value={newSub.summary||""} onChange={e=>setNewSub(p=>({...p,summary:e.target.value}))} placeholder="説明を入力..." style={{minHeight:80}}/></div><div style={{display:"flex",flexDirection:"column",gap:10}}><button className="btnP" onClick={()=>addSub(showAddSub)}>追加する</button><button className="btnG" onClick={()=>setShowAddSub(null)}>キャンセル</button></div></div></div></div>)}
+      {selItem&&!editItem&&(
+        <div className="overlay" onClick={()=>setSelItem(null)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div style={{borderRadius:"24px 24px 0 0",overflow:"hidden",height:260,background:"#eae7e0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {resolveImg(selItem.image)?<img src={resolveImg(selItem.image)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}><span style={{fontSize:48,opacity:.2}}>🖼</span><span style={{fontSize:14,color:"#b0ada8"}}>画像なし</span></div>}
+            </div>
+            <div className="sp">
+              <div style={{fontSize:20,fontWeight:700,marginBottom:14}}>{getT(selItem,"label",lang)||"（手順名未設定）"}</div>
+              <div style={{fontSize:15,color:"#606060",lineHeight:1.9,whiteSpace:"pre-wrap",marginBottom:28}}>{getT(selItem,"detail",lang)||"詳細説明なし"}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {editMode&&<button className="btnP" onClick={()=>{setEditItem({...selItem});setSelItem(null);}}>編集する</button>}
+                <button className="btnG" onClick={()=>setSelItem(null)}>← 戻る</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {editItem&&(
+        <ItemEditSheet
+          item={editItem} resolveImg={resolveImg}
+          onSave={item=>item.taskId?saveTaskItem(item):saveItem(item)}
+          onDelete={item=>item.taskId?deleteTaskItem(item):deleteItem(item)}
+          onClose={()=>setEditItem(null)}
+          saveImage={saveImage} deleteImage={deleteImage}
+        />
+      )}
+      {showSettings&&(
+        <div className="overlay" onClick={()=>setShowSettings(false)}>
+          <div className="sheet" onClick={e=>e.stopPropagation()}>
+            <div className="dh"/>
+            <div className="sp">
+              <div style={{fontSize:18,fontWeight:700,marginBottom:6}}>設定</div>
+              <div style={{fontSize:13,color:"#908e88",marginBottom:24,lineHeight:1.6}}>翻訳はMyMemory無料API（登録不要・約5,000文字/日）で行います。</div>
+
+              <div style={{marginBottom:24}}>
+                <label className="lbl">データ管理</label>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <button className="btnG" onClick={()=>{handleExport();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬇</span> JSONで書き出し（画像込み）</button>
+                  <button className="btnG" onClick={()=>{importRef.current.click();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬆</span> JSONを読み込む</button>
+                </div>
+              </div>
+
+              <div style={{marginBottom:24}}>
+                <label className="lbl">編集モード パスコード</label>
+                <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px",background:"#f0ede8",borderRadius:12}}>
+                  <div style={{flex:1,fontSize:15,fontWeight:500}}>{passcode?"設定済み（●●●●）":"未設定（誰でも編集可）"}</div>
+                  <button className="btnG" style={{width:"auto",padding:"10px 16px",fontSize:14}} onClick={()=>{setShowSettings(false);setPassDigits([]);setPassError(false);setPassModal(passcode?"change":"set1");}}>
+                    {passcode?"変更":"設定"}
+                  </button>
+                  {passcode&&<button className="btnG" style={{width:"auto",padding:"10px 16px",fontSize:14,color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>{setShowSettings(false);setPassDigits([]);setPassError(false);setPassModal("delete");}}>削除</button>}
+                </div>
+              </div>
+
+              <div style={{marginBottom:24}}>
+                <label className="lbl">表示言語</label>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {ALL_LANGS.map(l=>{const on=enabledLangs.includes(l.code);return(
+                    <div key={l.code} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:on?"#f0ede8":"#faf8f4",borderRadius:10,border:`1px solid ${on?"#d0ccc5":"#eae7e0"}`}}>
+                      <span style={{fontSize:22}}>{l.flag}</span>
+                      <div style={{flex:1}}><div style={{fontSize:15,fontWeight:600}}>{l.label}（{l.native}）</div>{l.code==="ja"&&<div style={{fontSize:12,color:"#a0a09a"}}>編集言語（常に有効）</div>}</div>
+                      {l.code!=="ja"&&<button className="btnG" style={{width:"auto",padding:"8px 14px",fontSize:13}} onClick={()=>setEnabledLangs(on?enabledLangs.filter(c=>c!==l.code):[...enabledLangs,l.code])}>{on?"無効":"追加"}</button>}
+                    </div>
+                  );})}
+                </div>
+              </div>
+              <button className="btnG" onClick={()=>setShowSettings(false)}>閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {passModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.75)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#faf8f4",borderRadius:24,padding:"32px 24px",width:"100%",maxWidth:340,boxShadow:"0 16px 60px rgba(0,0,0,.3)"}}>
+            <div style={{fontSize:18,fontWeight:700,marginBottom:6,textAlign:"center"}}>
+              {passModal==="enter"?"編集モード":passModal==="settings"?"設定":passModal==="change"?"パスコードを変更":passModal==="delete"?"パスコードを削除":passModal==="set1"?"新しいパスコードを設定":"もう一度入力"}
+            </div>
+            <div style={{fontSize:13,color:"#a0a09a",marginBottom:28,textAlign:"center"}}>
+              {passModal==="enter"?"4桁のパスコードを入力":passModal==="settings"?"パスコードを入力":passModal==="change"?"現在のパスコードを入力":passModal==="delete"?"現在のパスコードを入力":passModal==="set1"?"新しいパスコード（4桁）を入力":"確認のためもう一度入力してください"}
+            </div>
+            <div style={{display:"flex",justifyContent:"center",gap:16,marginBottom:36}}>
+              {[0,1,2,3].map(i=><div key={i} className={`pdot${passDigits.length>i?(passError?" err":" on"):""}`}/>)}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
+              {[1,2,3,4,5,6,7,8,9].map(n=><button key={n} className="pk" onClick={()=>handleDigit(String(n))}>{n}</button>)}
+              <div/><button className="pk" onClick={()=>handleDigit("0")}>0</button>
+              <button className="pk" style={{fontSize:18}} onClick={()=>setPassDigits(p=>p.slice(0,-1))}>⌫</button>
+            </div>
+            <button className="btnG" onClick={()=>{setPassModal(null);setPassDigits([]);setPassError(false);}}>キャンセル</button>
+          </div>
+        </div>
+      )}
+      {confirm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.6)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#faf8f4",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:380,boxShadow:"0 16px 60px rgba(0,0,0,.25)"}}>
+            <div style={{fontSize:18,fontWeight:700,marginBottom:10}}>確認</div>
+            <div style={{fontSize:15,color:"#606060",marginBottom:26,lineHeight:1.7}}>{confirm.msg}</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setConfirm(null)} style={{flex:1,background:"#fff",border:"1.5px solid #dedad0",borderRadius:12,padding:"14px",fontSize:15,color:"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>キャンセル</button>
+              <button onClick={()=>{confirm.onOk();setConfirm(null);}} style={{flex:1,background:"#c05050",border:"none",borderRadius:12,padding:"14px",fontSize:15,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>削除する</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <input ref={importRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={handleImport}/>
+    </div>
+  );
+}
+
+
+/* -- DragList（カテゴリ・サブカテゴリ・タスク共通の並び替えリスト） -- */
+function DragList({ items, onReorder, editMode, showToast, renderItem }) {
+  const [local,    setLocal]    = useState(items);
+  const [dragIdx,  setDragIdx]  = useState(null);
+  const [overIdx,  setOverIdx]  = useState(null);
+  const [pending,  setPending]  = useState(null);
+  const [showConf, setShowConf] = useState(false);
+  const listRef = useRef(null);
+  const dRef    = useRef(null);
+  const active  = useRef(false);
+
+  if (items !== local && dRef.current === null && !showConf) setLocal(items);
+
+  const getIdx = y => {
+    const kids = Array.from(listRef.current?.children ?? []);
+    for (let i = 0; i < kids.length; i++) if (y < kids[i].getBoundingClientRect().bottom) return i;
+    return kids.length - 1;
+  };
+  const onDown = (e, i) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); dRef.current=i; active.current=true; setDragIdx(i); setOverIdx(i); };
+  const onMove = (e, i) => { if (!active.current||dRef.current!==i) return; e.preventDefault(); setOverIdx(getIdx(e.clientY)); };
+  const onUp   = (e, i) => {
+    if (!active.current||dRef.current!==i) return;
+    active.current=false; const from=dRef.current, to=overIdx??from; dRef.current=null; setDragIdx(null); setOverIdx(null);
+    if (from===to) return;
+    const arr=[...local]; const [m]=arr.splice(from,1); arr.splice(to,0,m);
+    setLocal(arr); setPending(arr); setShowConf(true);
+  };
+
+  const dragHandle = (i) => (
+    <div
+      style={{width:40,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"#c8c4bc",fontSize:18,letterSpacing:-2,alignSelf:"stretch",touchAction:"none",cursor:"grab"}}
+      onPointerDown={e=>onDown(e,i)} onPointerMove={e=>onMove(e,i)} onPointerUp={e=>onUp(e,i)} onPointerCancel={e=>onUp(e,i)}
+    >⠿</div>
+  );
+
+  return (
+    <>
+      <div ref={listRef}>
+        {local.map((item, i) => (
+          <div key={item.id} style={{opacity:dragIdx===i?.4:1, outline:overIdx===i&&dragIdx!==null&&dragIdx!==i?"2px dashed #1a1a20":"none"}}>
+            {renderItem(item, dragHandle(i))}
+          </div>
+        ))}
+      </div>
+      {showConf && (
+        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.55)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#faf8f4",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:400,boxShadow:"0 16px 60px rgba(0,0,0,.22)"}}>
+            <div style={{fontSize:18,fontWeight:700,marginBottom:8}}>順番を変更しますか？</div>
+            <div style={{fontSize:14,color:"#808078",marginBottom:24,lineHeight:1.6}}>並び順が変更されます。確定しますか？</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setShowConf(false);setLocal(items);}} style={{flex:1,background:"#fff",border:"1.5px solid #dedad0",borderRadius:12,padding:"14px",fontSize:15,color:"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>元に戻す</button>
+              <button onClick={()=>{setShowConf(false);onReorder(pending);}} style={{flex:1,background:"#1a1a20",border:"none",borderRadius:12,padding:"14px",fontSize:15,color:"#f5f3ef",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>確定する</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* -- StepList -- */
+function StepList({ items, lang, editMode, resolveImg, onAdd, onTap, onEdit, onReorder, showToast }) {
+  const [local,    setLocal]    = useState(items);
+  const [dragIdx,  setDragIdx]  = useState(null);
+  const [overIdx,  setOverIdx]  = useState(null);
+  const [pending,  setPending]  = useState(null);
+  const [showConf, setShowConf] = useState(false);
+  const listRef = useRef(null);
+  const dRef    = useRef(null);
+  const active  = useRef(false);
+
+  if(items!==local && dRef.current===null && !showConf) setLocal(items);
+
+  const getIdx = y => { const kids=Array.from(listRef.current?.children??[]); for(let i=0;i<kids.length;i++) if(y<kids[i].getBoundingClientRect().bottom) return i; return kids.length-1; };
+  const onDown = (e,i) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); dRef.current=i; active.current=true; setDragIdx(i); setOverIdx(i); };
+  const onMove = (e,i) => { if(!active.current||dRef.current!==i) return; e.preventDefault(); setOverIdx(getIdx(e.clientY)); };
+  const onUp   = (e,i) => {
+    if(!active.current||dRef.current!==i) return;
+    active.current=false; const from=dRef.current, to=overIdx??from; dRef.current=null; setDragIdx(null); setOverIdx(null);
+    if(from===to) return;
+    const arr=[...local]; const [m]=arr.splice(from,1); arr.splice(to,0,m);
+    setLocal(arr); setPending(arr); setShowConf(true);
+  };
+
+  const getT2 = (obj,field) => { if(!lang||lang==="ja") return obj[field]||""; return obj.translations?.[lang]?.[field]||obj[field]||""; };
+
+  return (
+    <>
+      {editMode&&local.length>1&&<div style={{fontSize:12,color:"#a0a09a",marginBottom:8}}>☰ をドラッグして並び替え</div>}
+      <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:8}}>
+        {local.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"#b0ada8",fontSize:14}}>手順がありません</div>}
+        {local.map((item,i)=>(
+          <div key={item.id} className={`sc${dragIdx===i?" dra":""}${overIdx===i&&dragIdx!==null&&dragIdx!==i?" dov":""}`}>
+            {editMode&&<div className="grip" onPointerDown={e=>onDown(e,i)} onPointerMove={e=>onMove(e,i)} onPointerUp={e=>onUp(e,i)} onPointerCancel={e=>onUp(e,i)}>⠿</div>}
+            <div style={{display:"flex",alignItems:"center",gap:14,padding:"14px 14px 14px"+(editMode?" 0":" 14px"),flex:1,cursor:"pointer",minWidth:0}} onClick={()=>{if(!active.current&&dragIdx===null) onTap(item);}}>
+              <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,color:"#b0ada8",minWidth:26,flexShrink:0}}>{String(i+1).padStart(2,"0")}</span>
+              {resolveImg(item.image)?<img src={resolveImg(item.image)} alt="" style={{width:48,height:48,borderRadius:10,objectFit:"cover",flexShrink:0,border:"1px solid #e0ddd6"}}/>:<div style={{width:48,height:48,borderRadius:10,background:"#eae7e0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:20,opacity:.25}}>🖼</span></div>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:600,color:item.label?"#1a1a20":"#b0ada8"}}>{getT2(item,"label")||"（手順名未設定）"}</div>
+                {getT2(item,"detail")&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{getT2(item,"detail")}</div>}
+              </div>
+            </div>
+            {editMode&&<button onClick={()=>onEdit(item)} style={{background:"#f5f2ec",border:"none",borderLeft:"1px solid #eae7e0",padding:"0 14px",fontSize:13,color:"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500,alignSelf:"stretch",flexShrink:0}}>編集</button>}
+          </div>
+        ))}
+      </div>
+      {editMode&&(
+        <div style={{marginTop:8}}>
+          <button onClick={onAdd} style={{background:"transparent",color:"#908e88",border:"1.5px dashed #c8c4bc",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+            ＋ 手順追加
+          </button>
+        </div>
+      )}
+      {showConf&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.55)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#faf8f4",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:400,boxShadow:"0 16px 60px rgba(0,0,0,.22)"}}>
+            <div style={{fontSize:18,fontWeight:700,marginBottom:8}}>順番を変更しますか？</div>
+            <div style={{fontSize:14,color:"#808078",marginBottom:24,lineHeight:1.6}}>確定しますか？</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setShowConf(false);setLocal(items);}} style={{flex:1,background:"#fff",border:"1.5px solid #dedad0",borderRadius:12,padding:"14px",fontSize:15,color:"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>元に戻す</button>
+              <button onClick={()=>{setShowConf(false);onReorder(pending);}} style={{flex:1,background:"#1a1a20",border:"none",borderRadius:12,padding:"14px",fontSize:15,color:"#f5f3ef",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>確定する</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* -- TaskFields -- */
+function TaskFields({ task, onChange }) {
+  const allSel=DAYS.every(d=>task.days.includes(d));
+  const togDay=d=>onChange(p=>({...p,days:p.days.includes(d)?p.days.filter(x=>x!==d):[...p.days,d]}));
+  const togAll=()=>onChange(p=>({...p,days:allSel?[]:[...DAYS]}));
+  const hasEnd=task.endHour!=null&&task.endHour!=="";
+  return (
+    <>
+      <div style={{marginBottom:20}}><label className="lbl">開始時刻</label>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <select className="inp" style={{flex:1}} value={task.hour} onChange={e=>onChange(p=>({...p,hour:+e.target.value}))}>{Array.from({length:24},(_,i)=>i).map(h=><option key={h} value={h}>{String(h).padStart(2,"0")} 時</option>)}</select>
+          <span className="tsep">:</span>
+          <select className="inp" style={{flex:1}} value={task.minute} onChange={e=>onChange(p=>({...p,minute:+e.target.value}))}>{[0,5,10,15,20,25,30,35,40,45,50,55].map(m=><option key={m} value={m}>{String(m).padStart(2,"0")} 分</option>)}</select>
+        </div>
+      </div>
+      <div style={{marginBottom:20}}><label className="lbl">終了時刻（任意）</label>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 0",borderTop:"1px solid #eae7e0",cursor:"pointer"}} onClick={()=>onChange(p=>({...p,endHour:hasEnd?null:(p.minute>=0?p.hour+1:p.hour),endMinute:hasEnd?0:p.minute}))}>
+          <div style={{width:24,height:24,borderRadius:6,border:`1.5px solid ${hasEnd?"#1a1a20":"#dedad0"}`,background:hasEnd?"#1a1a20":"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{hasEnd&&<span style={{color:"#f5f3ef",fontSize:14,fontWeight:700}}>✓</span>}</div>
+          <span style={{fontSize:15,color:hasEnd?"#1a1a20":"#a0a09a",fontWeight:500}}>終了時刻を設定する</span>
+        </div>
+        {hasEnd&&<div style={{display:"flex",gap:10,alignItems:"center",marginTop:12}}>
+          <select className="inp" style={{flex:1}} value={task.endHour??0} onChange={e=>onChange(p=>({...p,endHour:+e.target.value}))}>{Array.from({length:24},(_,i)=>i).map(h=><option key={h} value={h}>{String(h).padStart(2,"0")} 時</option>)}</select>
+          <span className="tsep">:</span>
+          <select className="inp" style={{flex:1}} value={task.endMinute??0} onChange={e=>onChange(p=>({...p,endMinute:+e.target.value}))}>{[0,5,10,15,20,25,30,35,40,45,50,55].map(m=><option key={m} value={m}>{String(m).padStart(2,"0")} 分</option>)}</select>
+        </div>}
+      </div>
+      <div style={{marginBottom:20}}><label className="lbl">実施曜日</label>
+        <div style={{display:"flex",gap:6}}>
+          <button className={`dtog all${allSel?" on":""}`} onClick={togAll}>All</button>
+          <div style={{width:1,background:"#eae7e0",margin:"0 2px"}}/>
+          {DAYS.map(d=><button key={d} className={`dtog${task.days.includes(d)?" on":""}`} onClick={()=>togDay(d)}>{d}</button>)}
+        </div>
+      </div>
+      <div style={{marginBottom:20}}>
+        <label className="lbl">実施日（任意）</label>
+        <input className="inp" value={task.date||""} onChange={e=>onChange(p=>({...p,date:e.target.value}))} placeholder="例：毎月1日、年末年始など"/>
+      </div>
+      <div style={{marginBottom:20}}><label className="lbl">作業名</label><input className="inp" value={task.title} onChange={e=>onChange(p=>({...p,title:e.target.value}))} placeholder="例：朝礼"/></div>
+      <div style={{marginBottom:24}}><label className="lbl">概要（任意）</label><textarea className="inp" value={task.summary||""} onChange={e=>onChange(p=>({...p,summary:e.target.value}))} placeholder="作業の概要を入力..." style={{minHeight:80}}/></div>
+    </>
+  );
+}
+
+/* -- ItemEditSheet -- */
+function ItemEditSheet({ item, resolveImg, onSave, onDelete, onClose, saveImage, deleteImage }) {
+  const [label,    setLabel]    = useState(item.label  || "");
+  const [detail,   setDetail]   = useState(item.detail || "");
+  const [imgKey,   setImgKey]   = useState(item.image  || null);
+  const [preview,  setPreview]  = useState(() => resolveImg(item.image));
+  const [uploading,setUploading]= useState(false);
+  const fileRef = useRef();
+
+  useEffect(()=>{ if(imgKey) setPreview(resolveImg(imgKey)); },[imgKey]);
+
+  const handleFile = async file => {
+    if(!file||!file.type.startsWith("image/")) return;
+    setUploading(true);
+    const key=await saveImage(file,imgKey); setImgKey(key); setUploading(false);
+  };
+  const handleDelImg = async()=>{ await deleteImage(imgKey); setImgKey(null); setPreview(null); };
+  const handleSave = () => onSave({...item, label, detail, image:imgKey, translations:item.translations||{}});
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="sheet" onClick={e=>e.stopPropagation()}>
+        <div className="dh"/>
+        <div className="sp">
+          <div style={{fontSize:18,fontWeight:700,marginBottom:6}}>手順を編集</div>
+          <div style={{fontSize:12,color:"#a0a09a",marginBottom:20}}>※ 日本語で入力してください。</div>
+          <div style={{marginBottom:20}}><label className="lbl">手順名</label><input className="inp" value={label} onChange={e=>setLabel(e.target.value)} placeholder="手順名を入力"/></div>
+          <div style={{marginBottom:20}}><label className="lbl">詳細説明</label><textarea className="inp" value={detail} onChange={e=>setDetail(e.target.value)} placeholder="具体的な手順・注意点などを入力..."/></div>
+          <div style={{marginBottom:28}}>
+            <label className="lbl">画像</label>
+            {uploading&&<div style={{padding:"20px",textAlign:"center",color:"#908e88",fontSize:14}}>圧縮・保存中...</div>}
+            {!uploading&&preview&&<div style={{position:"relative",borderRadius:14,overflow:"hidden",height:220,background:"#eae7e0"}}><img src={preview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(to top,rgba(0,0,0,.5),transparent)",display:"flex",gap:10,padding:16}}><button onClick={()=>fileRef.current.click()} style={{flex:1,background:"rgba(250,248,244,.95)",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,color:"#1a1a20",cursor:"pointer"}}>変更</button><button onClick={handleDelImg} style={{flex:1,background:"rgba(26,26,32,.75)",border:"none",borderRadius:10,padding:"13px",fontSize:15,fontWeight:700,color:"#f0eeea",cursor:"pointer"}}>削除</button></div></div>}
+            {!uploading&&!preview&&<div className="drop" onClick={()=>fileRef.current.click()} onDrop={e=>{e.preventDefault();handleFile(e.dataTransfer.files[0]);}} onDragOver={e=>e.preventDefault()}><span style={{fontSize:38,opacity:.25}}>🖼</span><span style={{fontSize:15,color:"#a0a09a"}}>タップして画像を追加</span><span style={{fontSize:12,color:"#c0bdb5"}}>JPG・PNG・GIF・WebP</span></div>}
+            <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <button className="btnP" onClick={handleSave}>保存する</button>
+            {!item.isNew&&<button className="btnD" onClick={()=>onDelete(item)}>この手順を削除</button>}
+            <button className="btnG" onClick={onClose}>キャンセル</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
