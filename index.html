@@ -513,20 +513,35 @@ function App() {
     await idbSet(key, data);
     setImgCache(p=>({...p,[key]:data}));
 
-    // GASが設定されていれば即アップロード試行、失敗したらキューに積む
+    // GASが設定されていれば即アップロード試行
     const url = getGasUrl();
     if(url) {
       showToast("ok", "Driveにアップロード中...");
-      const viewUrl = await gasUploadImage(url, data, key);
-      if(viewUrl) {
-        await idbDel(key);
-        setImgCache(p=>{ const c={...p}; delete c[key]; return c; });
-        showToast("ok", "✅ Driveにアップロード完了");
-        return viewUrl;
-      } else {
-        await pendingAdd(key, data);
-        refreshPending();
-        showToast("err", "⚠️ Drive未送信キューに保存（オフライン）");
+      try {
+        const r = await fetch(url, {
+          method:"POST",
+          headers:{"Content-Type":"text/plain"},
+          body:JSON.stringify({action:"uploadImage", base64Data:data, imageId:key}),
+          redirect:"follow"
+        });
+        const txt = await r.text();
+        let d;
+        try { d = JSON.parse(txt); } catch(e) {
+          showToast("err","❌ レスポンス解析エラー: "+txt.slice(0,40));
+          await pendingAdd(key, data); refreshPending(); return key;
+        }
+        if(d.ok && d.viewUrl) {
+          await idbDel(key);
+          setImgCache(p=>{ const c={...p}; delete c[key]; return c; });
+          showToast("ok","✅ Driveにアップロード完了");
+          return d.viewUrl;
+        } else {
+          showToast("err","❌ GASエラー: "+(d.error||JSON.stringify(d).slice(0,40)));
+          await pendingAdd(key, data); refreshPending(); return key;
+        }
+      } catch(e) {
+        showToast("err","❌ 通信エラー: "+e.message.slice(0,40));
+        await pendingAdd(key, data); refreshPending();
       }
     }
     return key;
