@@ -241,6 +241,7 @@ function App() {
   const [passDigits,   setPassDigits]   = useState([]);
   const [passError,    setPassError]    = useState(false);
   const [transProgress,setTransProgress]= useState(null);
+  const [uploadingItems,setUploadingItems] = useState(new Set()); // uploading item IDs
   const [searchQuery,  setSearchQuery]  = useState("");
   const [showSearch,   setShowSearch]   = useState(false);
   const [menuOpen,    setMenuOpen]    = useState(false);
@@ -773,6 +774,27 @@ function App() {
 
   /* -- 手順 CRUD -- */
   const addItem = (catId,subId) => { setEditItem({id:uid(),label:"",detail:"",image:null,translations:{},catId,subId,isNew:true}); };
+  // バックグラウンドで画像をアップロードしてデータを更新する
+  const uploadInBackground = (item, catId, subId, taskId) => {
+    const itemId = item.id;
+    setUploadingItems(p => new Set([...p, itemId]));
+    uploadItemImageIfNeeded(item).then(uploaded => {
+      if(uploaded.image !== item.image) {
+        // DriveURLに差し替え
+        if(taskId) {
+          setTasks(p=>p.map(t=>t.id===taskId?{...t,items:t.items.map(i=>i.id===itemId?{...i,image:uploaded.image}:i)}:t));
+        } else {
+          setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:s.items.map(i=>i.id===itemId?{...i,image:uploaded.image}:i)}:s)}:m));
+        }
+        showToast("ok","✅ 画像をDriveに保存しました");
+      }
+      setUploadingItems(p => { const n=new Set(p); n.delete(itemId); return n; });
+    }).catch(e => {
+      console.warn("background upload error:", e);
+      setUploadingItems(p => { const n=new Set(p); n.delete(itemId); return n; });
+    });
+  };
+
   const uploadItemImageIfNeeded = async (clean) => {
     if(!clean.image || !isImgKey(clean.image)) return clean;
 
@@ -836,13 +858,17 @@ function App() {
     })();
     const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
     const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
-    // 画像が変わった場合、古いDrive画像を削除
+    // 古いDrive画像を削除
     if(!isNew && orig?.image && orig.image !== cleanNoTrans.image) {
-      await deleteImage(orig.image);
+      deleteImage(orig.image); // 非同期で削除（待たない）
     }
-    const uploaded = await uploadItemImageIfNeeded(cleanNoTrans);
-    setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:isNew?[...s.items,uploaded]:s.items.map(i=>i.id===uploaded.id?uploaded:i)}:s)}:m));
+    // まずIndexedDBの状態で即保存（画面を閉じる）
+    setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:isNew?[...s.items,cleanNoTrans]:s.items.map(i=>i.id===cleanNoTrans.id?cleanNoTrans:i)}:s)}:m));
     setEditItem(null);
+    // バックグラウンドでDriveにアップロード
+    if(isImgKey(cleanNoTrans.image)) {
+      uploadInBackground(cleanNoTrans, catId, subId, null);
+    }
   };
   const deleteItem = item => openConfirm("この手順を削除しますか？",async()=>{
     if(isImgKey(item.image)) await deleteImage(item.image);
@@ -868,12 +894,16 @@ function App() {
     const orig = tasks.find(t=>t.id===taskId)?.items?.find(i=>i.id===clean.id);
     const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
     const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
-    // 画像が変わった場合、古いDrive画像を削除
+    // 古いDrive画像を削除
     if(!isNew && orig?.image && orig.image !== cleanNoTrans.image) {
-      await deleteImage(orig.image);
+      deleteImage(orig.image); // 非同期（待たない）
     }
-    const uploaded = await uploadItemImageIfNeeded(cleanNoTrans);
-    setTasks(p=>p.map(t=>t.id===taskId?{...t,items:isNew?[...(t.items||[]),uploaded]:t.items.map(i=>i.id===clean.id?uploaded:i)}:t));
+    // 即保存して画面を閉じる
+    setTasks(p=>p.map(t=>t.id===taskId?{...t,items:isNew?[...(t.items||[]),cleanNoTrans]:t.items.map(i=>i.id===clean.id?cleanNoTrans:i)}:t));
+    // バックグラウンドでDriveにアップロード
+    if(isImgKey(cleanNoTrans.image)) {
+      uploadInBackground(cleanNoTrans, null, null, taskId);
+    }
     setEditItem(null);
   };
   const deleteTaskItem = item => openConfirm("この手順を削除しますか？",async()=>{
@@ -1107,7 +1137,9 @@ function App() {
                       showToast={showToast}
                       manuals={manuals}
                       getT={getT}
-                    />
+                      uploadingItems={uploadingItems}
+                    uploadingItems={uploadingItems}
+                      />
                   </div>
                 )}
               </div>
@@ -1187,7 +1219,9 @@ function App() {
                             onEdit={item=>setEditItem({...item,catId:cat.id,subId:sub.id})}
                             onReorder={arr=>reorderItems(cat.id,sub.id,arr)}
                             showToast={showToast}
-                          />
+                          uploadingItems={uploadingItems}
+                          uploadingItems={uploadingItems}
+                      />
                         </div>
                       )}
                     </div>
@@ -1247,7 +1281,8 @@ function App() {
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}><div style={{fontSize:12,color:"#0d7377",fontWeight:600}}>{getT(cat,"title",lang)} › マニュアル</div></div>
                   <div style={{fontSize:20,fontWeight:700,marginBottom:4}}>{getT(sub,"title",lang)}</div>
                   {getT(sub,"summary",lang)&&<div style={{fontSize:14,color:"#808078",marginBottom:16,lineHeight:1.6}}>{getT(sub,"summary",lang)}</div>}
-                  <div style={{height:1,background:"#eae7e0",marginBottom:16}}/>
+                  <div style={{height:1,background:"#eae7e0",marginBottom:16}}uploadingItems={uploadingItems}
+                      />
                   <StepList
                     items={sub.items||[]}
                     lang={lang}
@@ -1561,7 +1596,7 @@ function DragList({ items, onReorder, editMode, showToast, renderItem }) {
 }
 
 /* -- StepList -- */
-function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, onEdit, onReorder, showToast, manuals, getT }) {
+function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, onEdit, onReorder, showToast, manuals, getT, uploadingItems }) {
   const [local,    setLocal]    = useState(items);
   const [dragIdx,  setDragIdx]  = useState(null);
   const [overIdx,  setOverIdx]  = useState(null);
@@ -1597,7 +1632,9 @@ function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, 
           <div key={item.id} className={`sc${dragIdx===i?" dra":""}${overIdx===i&&dragIdx!==null&&dragIdx!==i?" dov":""}`}>
             {editMode&&<div className="grip" onPointerDown={e=>onDown(e,i)} onPointerMove={e=>onMove(e,i)} onPointerUp={e=>onUp(e,i)} onPointerCancel={e=>onUp(e,i)}>⠿</div>}
             <div style={{display:"flex",alignItems:"center",gap:14,padding:"14px 14px 14px"+(editMode?" 0":" 14px"),flex:1,cursor:"pointer",minWidth:0}} onClick={()=>{if(!active.current&&dragIdx===null) onTap(item);}}>
-              <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,color:"#b0ada8",minWidth:26,flexShrink:0}}>{String(i+1).padStart(2,"0")}</span>
+              {(uploadingItems&&uploadingItems.has(item.id))
+                ? <span style={{minWidth:26,flexShrink:0,fontSize:14,color:"#0d7377",display:"inline-block",animation:"spin .8s linear infinite",textAlign:"center"}}>⟳</span>
+                : <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,color:"#b0ada8",minWidth:26,flexShrink:0}}>{String(i+1).padStart(2,"0")}</span>}
               {item.linkRef
                 ? <div style={{width:48,height:48,borderRadius:10,background:"#e0f2f2",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>📎</div>
                 : resolveImg(item.image)
