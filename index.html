@@ -755,11 +755,12 @@ function App() {
         showToast("ok","✅ Driveにアップロード完了");
         return {...clean, image: d.viewUrl};
       } else {
-        showToast("err","❌ Drive保存エラー: "+(d.error||"不明"));
+        console.warn("Drive保存エラー:", d.error);
         return clean;
       }
     } catch(e) {
-      showToast("err","❌ 通信エラー: "+e.message.slice(0,30));
+      console.warn("uploadItemImageIfNeeded error:", e);
+      // エラーでもIndexedDBのキーのまま返す（表示はキャッシュで対応）
       return clean;
     }
   };
