@@ -412,7 +412,7 @@ function App() {
   // GASへ保存
   const syncToGas = async (key, value) => {
     const url = getGasUrl(); if(!url) return;
-    await gasFetch(url, key, value);
+    try { await gasFetch(url, key, value); } catch(e) { console.warn("syncToGas error:", key, e); }
   };
 
   // GAS→全データをアップロード
