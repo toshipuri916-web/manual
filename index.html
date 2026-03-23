@@ -91,10 +91,14 @@ async function gasFetch(url, key, value) {
       const r = await fetch(`${url}?key=${encodeURIComponent(key)}`);
       const d = await r.json(); return d.ok ? d.data : null;
     } else {
-      const r = await fetch(url, {method:"POST",body:JSON.stringify({key,value})});
+      const r = await fetch(url, {
+        method:"POST",
+        headers: {"Content-Type": "text/plain"},
+        body: JSON.stringify({key, value})
+      });
       const d = await r.json(); return d.ok;
     }
-  } catch { return null; }
+  } catch(e) { console.warn("gasFetch error:", e); return null; }
 }
 
 async function gasGetAll(url) {
@@ -109,13 +113,17 @@ async function gasGetAll(url) {
 async function gasUploadImage(url, base64Data, imageId) {
   if(!url) return null;
   try {
+    // GASはContent-Type: text/plainでCORSプリフライトを回避
     const r = await fetch(url, {
       method:"POST",
+      headers: {"Content-Type": "text/plain"},
       body: JSON.stringify({ action:"uploadImage", base64Data, imageId })
     });
-    const d = await r.json();
-    return d.ok ? d.viewUrl : null;
-  } catch { return null; }
+    const text = await r.text();
+    const d = JSON.parse(text);
+    if(!d.ok) { console.warn("GAS upload error:", d.error); return null; }
+    return d.viewUrl || null;
+  } catch(e) { console.warn("gasUploadImage error:", e); return null; }
 }
 
 // 未送信画像キュー（IndexedDB）
@@ -228,6 +236,7 @@ function App() {
   const [passError,    setPassError]    = useState(false);
   const [transProgress,setTransProgress]= useState(null);
   const [menuOpen,    setMenuOpen]    = useState(false);
+  const [showQR,      setShowQR]      = useState(false);
   const mkNotice = text => ({id:uid(), text:text.trim(), at:new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})});
   const [adminNotices, setAdminNoticesRaw] = useState(()=>loadJ("manual_admin_notices_v1")??[]);
   const setAdminNotices = u => setAdminNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_admin_notices_v1",JSON.stringify(n));}catch{} syncToGas("manual_admin_notices_v1",n); return n; });
@@ -352,7 +361,20 @@ function App() {
     }
   }, []);
 
-  useEffect(() => { idbGetAll().then(all=>setImgCache(all)).catch(()=>{}); refreshPending(); }, []);
+  useEffect(() => {
+    idbGetAll().then(all=>setImgCache(all)).catch(()=>{});
+    refreshPending();
+    // QRスキャンでページを開いた場合、URLパラメータからGAS URLを自動設定
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const scanned = params.get("gas");
+      if(scanned && scanned.startsWith("https://script.google.com")) {
+        saveGasUrl(scanned);
+        showToast("ok","GAS連携URLを設定しました");
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    } catch(e) {}
+  }, []);
 
   const [gasUrl,    setGasUrlState] = useState(()=>getGasUrl());
   const [syncing,   setSyncing]     = useState(false);
@@ -1130,6 +1152,7 @@ function App() {
                 {gasUrl&&<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",gap:8}}>
                     <button className="btnP" style={{flex:1}} onClick={()=>{uploadToGas();setShowSettings(false);}}>⬆ GASにアップロード</button>
+                    <button className="btnG" style={{width:"auto",padding:"12px 16px"}} onClick={()=>setShowQR(true)}>📲 QR</button>
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     <button className="btnG" style={{flex:1}} onClick={()=>{loadFromGas();setShowSettings(false);}}>⬇ GASから読み込み</button>
@@ -1195,6 +1218,23 @@ function App() {
                 <button className="btnG" onClick={()=>setLinkPicker(null)}>キャンセル</button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showQR&&gasUrl&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.75)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:24}} onClick={()=>setShowQR(false)}>
+          <div style={{background:"#faf8f4",borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:360,boxShadow:"0 16px 60px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:18,fontWeight:700,marginBottom:6,textAlign:"center"}}>QRコードで共有</div>
+            <div style={{fontSize:13,color:"#908e88",marginBottom:20,textAlign:"center",lineHeight:1.6}}>このQRコードをスキャンすると<br/>GAS連携URLが自動で設定されます</div>
+            <div style={{background:"#fff",borderRadius:16,padding:16,display:"flex",justifyContent:"center",marginBottom:20}}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(window.location.href.split("?")[0]+"?gas="+gasUrl)}`}
+                alt="QR Code" style={{width:220,height:220,borderRadius:8}}
+              />
+            </div>
+            <div style={{fontSize:11,color:"#b0ada8",textAlign:"center",marginBottom:20,wordBreak:"break-all",lineHeight:1.5}}>{gasUrl.slice(0,60)}...</div>
+            <button className="btnG" onClick={()=>setShowQR(false)}>閉じる</button>
           </div>
         </div>
       )}
