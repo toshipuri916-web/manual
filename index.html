@@ -553,7 +553,29 @@ function App() {
     // 一旦IndexedDBに保存（Driveアップロードは保存ボタン時）
     return key;
   };
-  const deleteImage = async key => { if(isImgKey(key)){await idbDel(key);setImgCache(p=>{const c={...p};delete c[key];return c;});} };
+  const deleteImage = async key => {
+    if(isImgKey(key)) {
+      // IndexedDB削除
+      await idbDel(key);
+      setImgCache(p=>{ const c={...p}; delete c[key]; return c; });
+    } else if(key && key.startsWith("http")) {
+      // DriveURL → fileIdを取り出してGASで削除
+      const url = getGasUrl();
+      if(url) {
+        try {
+          // thumbnail URL: ...?id=FILE_ID&sz=...
+          const m = key.match(/[?&]id=([^&]+)/);
+          if(m) {
+            await fetch(url, {
+              method:"POST", headers:{"Content-Type":"text/plain"},
+              body:JSON.stringify({action:"deleteImage", fileId:m[1]}),
+              redirect:"follow"
+            });
+          }
+        } catch(e) { console.warn("Drive削除エラー:", e); }
+      }
+    }
+  };
 
   /* -- JSON 書き出し -- */
   const handleExport = async () => {
