@@ -1348,14 +1348,6 @@ function App() {
               <div style={{fontSize:13,color:"#908e88",marginBottom:24,lineHeight:1.6}}>翻訳はMyMemory無料API（登録不要・約5,000文字/日）で行います。</div>
 
               <div style={{marginBottom:24}}>
-                <label className="lbl">データ管理</label>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  <button className="btnG" onClick={()=>{handleExport();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬇</span> JSONで書き出し（画像込み）</button>
-                  <button className="btnG" onClick={()=>{importRef.current.click();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬆</span> JSONを読み込む</button>
-                </div>
-              </div>
-
-              <div style={{marginBottom:24}}>
                 <label className="lbl">編集モード パスコード</label>
                 <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px",background:"#f0ede8",borderRadius:12}}>
                   <div style={{flex:1,fontSize:15,fontWeight:500}}>{passcode?"設定済み（●●●●）":"未設定（誰でも編集可）"}</div>
@@ -1379,6 +1371,14 @@ function App() {
                 </div>
               </div>
               <div style={{marginBottom:24}}>
+                <label className="lbl">データ管理</label>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <button className="btnG" onClick={()=>{handleExport();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬇</span> JSONで書き出し（画像込み）</button>
+                  <button className="btnG" onClick={()=>{importRef.current.click();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬆</span> JSONを読み込む</button>
+                </div>
+              </div>
+
+              <div style={{marginBottom:24}}>
                 <label className="lbl">GAS連携URL（複数端末でデータ共有）</label>
                 <div style={{display:"flex",gap:8}}>
                   <input className="inp" style={{flex:1,fontSize:13}} value={gasUrl} onChange={e=>saveGasUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..."/>
@@ -1390,7 +1390,7 @@ function App() {
                   </div>
                   <div style={{display:"flex",gap:8}}>
                     <button className="btnG" style={{flex:1}} onClick={()=>{loadFromGas();setShowSettings(false);}}>⬇ GASから読み込み</button>
-                    <button className="btnG" style={{flex:1,color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>saveGasUrl("")}>URLを削除</button>
+                    <button className="btnG" style={{flex:1,color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>openConfirm("GAS連携URLを削除しますか？\n削除すると自動同期が停止します。",()=>saveGasUrl(""))}>URLを削除</button>
                   </div>
                 </div>}
                 {!gasUrl&&<div style={{fontSize:12,color:"#a0a09a",marginTop:6,lineHeight:1.6}}>GASをデプロイして発行されたURLを入力すると、データが自動的にGASのスプレッドシートに保存され、複数端末で共有できます。</div>}
