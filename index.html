@@ -571,8 +571,15 @@ function App() {
           redirect:"follow"
         });
         const d = JSON.parse(await r.text());
-        if(d.ok) showToast("ok","Driveから画像を削除しました");
-        else showToast("err","Drive削除エラー: "+(d.error||"不明"));
+        if(d.ok) {
+          // IndexedDB内の孤立したimg_キーも掃除
+          const allImgs = await idbGetAll();
+          for(const k of Object.keys(allImgs)) {
+            if(k.startsWith(IMG_PRE)) { await idbDel(k); }
+          }
+          setImgCache({});
+          showToast("ok","Driveから画像を削除しました");
+        } else showToast("err","Drive削除エラー: "+(d.error||"不明"));
       } catch(e) { showToast("err","通信エラー: "+e.message.slice(0,30)); }
     }
   };
@@ -1199,6 +1206,7 @@ function App() {
           onDelete={item=>item.taskId?deleteTaskItem(item):deleteItem(item)}
           onClose={()=>setEditItem(null)}
           saveImage={saveImage} deleteImage={deleteImage}
+          openConfirm={openConfirm}
         />
       )}
       {showSettings&&(
@@ -1612,7 +1620,7 @@ function TaskFields({ task, onChange }) {
 }
 
 /* -- ItemEditSheet -- */
-function ItemEditSheet({ item, resolveImg, onSave, onDelete, onClose, saveImage, deleteImage }) {
+function ItemEditSheet({ item, resolveImg, onSave, onDelete, onClose, saveImage, deleteImage, openConfirm }) {
   const [label,    setLabel]    = useState(item.label  || "");
   const [detail,   setDetail]   = useState(item.detail || "");
   const [imgKey,   setImgKey]   = useState(item.image  || null);
@@ -1627,7 +1635,7 @@ function ItemEditSheet({ item, resolveImg, onSave, onDelete, onClose, saveImage,
     setUploading(true);
     const key=await saveImage(file,imgKey); setImgKey(key); setUploading(false);
   };
-  const handleDelImg = async()=>{ await deleteImage(imgKey); setImgKey(null); setPreview(null); };
+  const handleDelImg = ()=>{ openConfirm("この画像を削除しますか？", async()=>{ await deleteImage(imgKey); setImgKey(null); setPreview(null); }); };
   const handleSave = () => onSave({...item, label, detail, image:imgKey, translations:item.translations||{}});
 
   return (
