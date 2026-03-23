@@ -837,6 +837,10 @@ function App() {
     })();
     const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
     const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
+    // 画像が変わった場合、古いDrive画像を削除
+    if(!isNew && orig?.image && orig.image !== cleanNoTrans.image) {
+      await deleteImage(orig.image);
+    }
     const uploaded = await uploadItemImageIfNeeded(cleanNoTrans);
     setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:isNew?[...s.items,uploaded]:s.items.map(i=>i.id===uploaded.id?uploaded:i)}:s)}:m));
     setEditItem(null);
@@ -865,6 +869,10 @@ function App() {
     const orig = tasks.find(t=>t.id===taskId)?.items?.find(i=>i.id===clean.id);
     const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
     const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
+    // 画像が変わった場合、古いDrive画像を削除
+    if(!isNew && orig?.image && orig.image !== cleanNoTrans.image) {
+      await deleteImage(orig.image);
+    }
     const uploaded = await uploadItemImageIfNeeded(cleanNoTrans);
     setTasks(p=>p.map(t=>t.id===taskId?{...t,items:isNew?[...(t.items||[]),uploaded]:t.items.map(i=>i.id===clean.id?uploaded:i)}:t));
     setEditItem(null);
@@ -995,10 +1003,7 @@ function App() {
                           <button onClick={()=>setMemoNotices(p=>p.filter(x=>x.id!==n.id))} style={{background:"none",border:"none",color:"#0d7377",cursor:"pointer",fontSize:16,flexShrink:0,padding:"0 2px",lineHeight:1}}>✕</button>
                         </div>
                       ))}
-                      <div style={{display:"flex",gap:6}}>
-                        <input className="inp" style={{flex:1,fontSize:13,padding:"8px 10px",background:"#f5fafa",borderColor:"#b0e0e0"}} value={newMemoText} onChange={e=>setNewMemoText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&newMemoText.trim()){setMemoNotices(p=>[...p,mkNotice(newMemoText)]);setNewMemoText("");}}} placeholder="引き継ぎメモを追加..."/>
-                        <button onClick={()=>{if(newMemoText.trim()){setMemoNotices(p=>[...p,mkNotice(newMemoText)]);setNewMemoText("");}}} style={{background:"#0d7377",border:"none",borderRadius:8,padding:"8px 12px",fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>追加</button>
-                      </div>
+
                     </div>
                   </div>
                 </div>
@@ -1007,8 +1012,23 @@ function App() {
           )}
 
           {sorted.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📋</div><div style={{fontSize:15}}>{editMode?"下の「＋ 作業追加」から追加してください。":"編集ボタンを押すと作業を追加できます。"}</div></div>}
-          {sorted.map(task=>(
+          {(()=>{
+            // 未処理/作業中タスクの最初のインデックスを探す
+            const firstUnfinished = sorted.findIndex(t => (taskStatus[t.id]||"none") !== "done");
+            return sorted.map((task, idx) => (
               <div key={task.id}>
+                {/* 未完了タスクの最初の上にメモを表示 */}
+                {idx === firstUnfinished && (
+                  <div style={{display:"flex",gap:6,padding:"8px 12px",background:"#f0fafa",borderBottom:"1px solid #d8f0f0",borderTop:"1px solid #d8f0f0"}}>
+                    <span style={{fontSize:16,flexShrink:0,alignSelf:"center"}}>📝</span>
+                    <input className="inp" style={{flex:1,fontSize:13,padding:"7px 10px",background:"#f5fafa",borderColor:"#b0e0e0"}}
+                      value={newMemoText} onChange={e=>setNewMemoText(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&newMemoText.trim()){setMemoNotices(p=>[...p,mkNotice(newMemoText)]);setNewMemoText("");}}}
+                      placeholder="引き継ぎメモを追加..."/>
+                    <button onClick={()=>{if(newMemoText.trim()){setMemoNotices(p=>[...p,mkNotice(newMemoText)]);setNewMemoText("");}}}
+                      style={{background:"#0d7377",border:"none",borderRadius:8,padding:"7px 12px",fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>追加</button>
+                  </div>
+                )}
                 <div className={`cat-row${expandedTask===task.id?" expanded":""}${taskStatus[task.id]==="done"?" task-done":""}${taskStatus[task.id]==="doing"?" task-doing":""}`} onClick={()=>setExpandedTask(expandedTask===task.id?null:task.id)}>
                   {/* 左：本文（曜日・タイトル・概要） */}
                   <div style={{flex:1,minWidth:0}}>
@@ -1067,7 +1087,8 @@ function App() {
                   </div>
                 )}
               </div>
-          ))}
+            ));
+          })()}
           {editMode&&expandedTask===null&&(
             <div style={{padding:"12px 16px"}}>
               <button onClick={()=>setShowAddTask(true)} style={{background:"transparent",color:"#0d7377",border:"1.5px dashed #0d7377",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span>📋</span> 作業追加</button>
