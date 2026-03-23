@@ -854,44 +854,43 @@ function App() {
           {sorted.map(task=>(
               <div key={task.id}>
                 <div className={`cat-row${expandedTask===task.id?" expanded":""}${taskStatus[task.id]==="done"?" task-done":""}${taskStatus[task.id]==="doing"?" task-doing":""}`} onClick={()=>setExpandedTask(expandedTask===task.id?null:task.id)}>
-                  {/* 時刻：左側中央寄せ */}
-                  <div style={{minWidth:90,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRight:"1px solid #eae7e0",paddingRight:12,marginRight:12,gap:3}}>
-                    <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700,color:"#1a1a20",lineHeight:1}}>{fmt(task.hour,task.minute)}</span>
-                    {task.endHour!=null&&task.endHour!==""&&<>
-                      <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#b0ada8",lineHeight:1}}>↓</span>
-                      <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:14,fontWeight:700,color:"#908e88",lineHeight:1}}>{fmt(task.endHour,task.endMinute??0)}</span>
-                    </>}
-                    {task.priority==="low"&&<span className="pri-badge pri-low">持越可</span>}
-                    {task.priority==="high"&&<span className="pri-badge pri-high">重要</span>}
-                    {task.priority==="top"&&<span className="pri-badge pri-top">最重要</span>}
-                  </div>
-                  {/* 右側：曜日＋実施日・作業名・概要 */}
+                  {/* 左：本文（曜日・タイトル・概要） */}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
-                      {DAYS.map(d=><span key={d} style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 7px",borderRadius:5,fontWeight:500,background:task.days.includes(d)?"#1a1a20":"#eae7e0",color:task.days.includes(d)?"#f0eeea":"#b0ada8"}}>{d}</span>)}
-                      {(getT(task,"date",lang)||task.date)&&<span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 7px",borderRadius:5,fontWeight:500,background:"#1a1a20",color:"#f0eeea"}}>{getT(task,"date",lang)||task.date}</span>}
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",marginBottom:5}}>
+                      {DAYS.map(d=><span key={d} style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:task.days.includes(d)?"#1a1a20":"#eae7e0",color:task.days.includes(d)?"#f0eeea":"#b0ada8"}}>{d}</span>)}
                     </div>
-                    <div style={{fontSize:16,fontWeight:700,color:"#1a1a20"}}>{getT(task,"title",lang)}</div>
-                    {getT(task,"summary",lang)&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}><LinkText text={getT(task,"summary",lang)}/></div>}
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <div style={{fontSize:15,fontWeight:700,color:"#1a1a20"}}>{getT(task,"title",lang)}</div>
+                      {task.priority==="low"&&<span className="pri-badge pri-low">持越可</span>}
+                      {task.priority==="high"&&<span className="pri-badge pri-high">重要</span>}
+                      {task.priority==="top"&&<span className="pri-badge pri-top">最重要</span>}
+                    </div>
+                    {getT(task,"summary",lang)&&<div style={{fontSize:12,color:"#908e88",marginTop:2,lineHeight:1.4}}><LinkText text={getT(task,"summary",lang)}/></div>}
+                  </div>
+                  {/* 右：時刻＋実施日＋ステータス */}
+                  <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:4,paddingLeft:8,borderLeft:"1px solid #eae7e0",minWidth:62}}>
+                    <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:700,color:"#1a1a20",lineHeight:1}}>{fmt(task.hour,task.minute)}</span>
+                    {task.endHour!=null&&task.endHour!==""&&<>
+                      <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"#b0ada8",lineHeight:1}}>↓</span>
+                      <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:700,color:"#908e88",lineHeight:1}}>{fmt(task.endHour,task.endMinute??0)}</span>
+                    </>}
+                    {(getT(task,"date",lang)||task.date)&&<span style={{fontSize:10,padding:"2px 5px",borderRadius:4,fontWeight:500,background:"#1a1a20",color:"#f0eeea",textAlign:"center",maxWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getT(task,"date",lang)||task.date}</span>}
+                    {!editMode&&(()=>{
+                      const s=taskStatus[task.id]||"none";
+                      const next={none:"doing",doing:"done",done:"none"}[s];
+                      const cfg={none:{label:"未",bg:"#1a1a20",color:"#f0eeea"},doing:{label:"作業中",bg:"#f5c842",color:"#7a4000"},done:{label:"済",bg:"#4caf7d",color:"#fff"}};
+                      const c=cfg[s];
+                      return(
+                        <button onClick={e=>{e.stopPropagation();setTaskStatus(p=>({...p,[task.id]:next}));}}
+                          style={{background:c.bg,color:c.color,border:"none",borderRadius:6,padding:"6px 8px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",width:"100%",transition:"all .15s"}}>
+                          {c.label}
+                        </button>
+                      );
+                    })()}
                   </div>
                   <div style={{fontSize:18,color:expandedTask===task.id?"#1a1a20":"#c8c4bc",fontWeight:700,transition:"transform .2s",transform:expandedTask===task.id?"rotate(90deg)":"none",flexShrink:0}}>›</div>
                   {editMode&&<button onClick={e=>{e.stopPropagation();setEditTask({...task});}} style={{background:expandedTask===task.id?"rgba(255,255,255,.15)":"#eae7e0",border:"none",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
-                  {!editMode&&(
-                    <div style={{paddingLeft:8,flexShrink:0}} onClick={e=>e.stopPropagation()}>
-                      {(()=>{
-                        const s=taskStatus[task.id]||"none";
-                        const next={none:"doing",doing:"done",done:"none"}[s];
-                        const cfg={none:{label:"未",bg:"#1a1a20",color:"#f0eeea"},doing:{label:"作業中",bg:"#f5c842",color:"#7a4000"},done:{label:"済",bg:"#4caf7d",color:"#fff"}};
-                        const c=cfg[s];
-                        return(
-                          <button onClick={()=>setTaskStatus(p=>({...p,[task.id]:next}))}
-                            style={{background:c.bg,color:c.color,border:"none",borderRadius:8,padding:"13px 16px",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",minWidth:80,transition:"all .15s"}}>
-                            {c.label}
-                          </button>
-                        );
-                      })()}
-                    </div>
-                  )}
+
                 </div>
                 {expandedTask===task.id&&(
                   <div className="steps-panel" style={{padding:"14px 16px 14px 20px",marginLeft:16}}>
@@ -1001,8 +1000,8 @@ function App() {
       {selItem&&!editItem&&(
         <div className="overlay" onClick={()=>setSelItem(null)}>
           <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div style={{borderRadius:"24px 24px 0 0",overflow:"hidden",height:260,background:"#eae7e0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              {resolveImg(selItem.image)?<img src={resolveImg(selItem.image)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}><span style={{fontSize:48,opacity:.2}}>🖼</span><span style={{fontSize:14,color:"#b0ada8"}}>画像なし</span></div>}
+            <div style={{borderRadius:"24px 24px 0 0",overflow:"hidden",background:"#eae7e0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {resolveImg(selItem.image)?<img src={resolveImg(selItem.image)} alt="" style={{maxWidth:"100%",maxHeight:"65vh",display:"block",margin:"0 auto"}}/>:<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}><span style={{fontSize:48,opacity:.2}}>🖼</span><span style={{fontSize:14,color:"#b0ada8"}}>画像なし</span></div>}
             </div>
             <div className="sp">
               <div style={{fontSize:20,fontWeight:700,marginBottom:14}}>{getT(selItem,"label",lang)||"（手順名未設定）"}</div>
