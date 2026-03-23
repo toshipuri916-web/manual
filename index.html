@@ -365,7 +365,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    idbGetAll().then(all=>setImgCache(all)).catch(()=>{});
+    idbGetAll().then(all=>setImgCache(all)).catch(()=>{});  // cache_ keys included
     refreshPending();
     // QRスキャンでページを開いた場合、URLパラメータからGAS URLを自動設定
     try {
@@ -483,8 +483,30 @@ function App() {
       if(all["manual_cfg_v1"]) { const c=all["manual_cfg_v1"]; if(c.lang) setLangR(c.lang); if(c.enabledLangs) setEnabledLangsR(c.enabledLangs); if(c.passcode!==undefined) setPasscodeR(c.passcode); saveJ(CFG_KEY,c); }
       if(all["manual_admin_notices_v1"]) setAdminNotices(all["manual_admin_notices_v1"]);
       if(all["manual_memo_notices_v1"])  setMemoNotices(all["manual_memo_notices_v1"]);
+      // DriveURLの画像をIndexedDBにキャッシュ
+      const allItems = [
+        ...(all["manual_sch_v1"]||[]).flatMap(t=>(t.items||[]).map(i=>i.image)),
+        ...(all["manual_cat_v2"]||[]).flatMap(m=>(m.subcategories||[]).flatMap(s=>(s.items||[]).map(i=>i.image)))
+      ].filter(url=>url&&url.startsWith("http"));
+      const uniqueUrls = [...new Set(allItems)];
+      let cached = 0;
+      for(const url of uniqueUrls) {
+        const cacheKey = "cache_"+url.match(/[?&]id=([^&]+)/)?.[1];
+        if(!cacheKey) continue;
+        const existing = await new Promise(res=>{ openDB().then(db=>{ const tx=db.transaction(IDB_STORE,"readonly"); const req=tx.objectStore(IDB_STORE).get(cacheKey); req.onsuccess=e=>res(e.target.result||null); req.onerror=()=>res(null); }).catch(()=>res(null)); });
+        if(!existing) {
+          try {
+            const r = await fetch(url);
+            const blob = await r.blob();
+            const b64 = await new Promise(res=>{ const fr=new FileReader(); fr.onload=e=>res(e.target.result); fr.readAsDataURL(blob); });
+            await idbSet(cacheKey, b64);
+            setImgCache(p=>({...p,[cacheKey]:b64}));
+            cached++;
+          } catch(e) { console.warn("cache error:", e); }
+        }
+      }
       setLastSync(new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}));
-      showToast("ok","同期しました");
+      showToast("ok", cached>0 ? `同期完了（画像${cached}枚キャッシュ）` : "同期しました");
       flushPendingImages();
     } finally { setSyncing(false); }
   };
@@ -510,7 +532,16 @@ function App() {
 
   const showToast   = (type,text) => { setToast({type,text}); setTimeout(()=>setToast(null),3000); };
   const openConfirm = (msg,onOk)  => setConfirm({msg,onOk});
-  const resolveImg  = v => { if(!v) return null; if(v.startsWith('http')) return v; return isImgKey(v)?(imgCache[v]??null):v; };
+  const resolveImg  = v => {
+    if(!v) return null;
+    if(v.startsWith('http')) {
+      // キャッシュがあれば使う
+      const cacheKey = "cache_"+v.match(/[?&]id=([^&]+)/)?.[1];
+      if(cacheKey && imgCache[cacheKey]) return imgCache[cacheKey];
+      return v;
+    }
+    return isImgKey(v)?(imgCache[v]??null):v;
+  };
 
   /* -- 編集モード -- */
   const enterEdit = () => { if(!passcode){setEditMode(true);return;} setPassDigits([]); setPassError(false); setPassModal("enter"); };
@@ -1265,32 +1296,17 @@ function App() {
                 </div>}
                 {!gasUrl&&<div style={{fontSize:12,color:"#a0a09a",marginTop:6,lineHeight:1.6}}>GASをデプロイして発行されたURLを入力すると、データが自動的にGASのスプレッドシートに保存され、複数端末で共有できます。</div>}
               </div>
-              {gasUrl&&<div style={{marginBottom:16}}>
-                <label className="lbl">GAS接続テスト（画像アップロード確認）</label>
+              <div style={{marginBottom:16}}>
+                <label className="lbl">画像キャッシュ</label>
+                <div style={{fontSize:12,color:"#a0a09a",marginBottom:8,lineHeight:1.6}}>同期時にDriveの画像を端末に保存します。画像を差し替えた場合はキャッシュをクリアして再同期してください。</div>
                 <button className="btnG" onClick={async()=>{
-                  showToast("ok","テスト中...");
-                  // 小さなテスト画像を作成
-                  const c=document.createElement("canvas"); c.width=10; c.height=10;
-                  const ctx=c.getContext("2d"); ctx.fillStyle="#ff0000"; ctx.fillRect(0,0,10,10);
-                  const testData=c.toDataURL("image/jpeg",0.5);
-                  const testId="test_"+Date.now();
-                  const r=await fetch(gasUrl,{
-                    method:"POST",
-                    headers:{"Content-Type":"text/plain"},
-                    body:JSON.stringify({action:"uploadImage",base64Data:testData,imageId:testId}),
-                    redirect:"follow"
-                  });
-                  const txt=await r.text();
-                  console.log("GAS test response:",txt);
-                  try{
-                    const d=JSON.parse(txt);
-                    if(d.ok&&d.viewUrl) showToast("ok","✅ Drive接続OK: "+d.viewUrl.slice(0,40));
-                    else showToast("err","❌ GASエラー: "+(d.error||"不明"));
-                  }catch(e){
-                    showToast("err","❌ レスポンスエラー: "+txt.slice(0,50));
-                  }
-                }}>📡 Drive接続テスト</button>
-              </div>}
+                  const all = await idbGetAll();
+                  const cacheKeys = Object.keys(all).filter(k=>k.startsWith("cache_"));
+                  for(const k of cacheKeys){ await idbDel(k); }
+                  setImgCache(p=>{ const c={...p}; cacheKeys.forEach(k=>delete c[k]); return c; });
+                  showToast("ok",`キャッシュを${cacheKeys.length}件クリアしました`);
+                }}>🗑 画像キャッシュをクリア</button>
+              </div>
               <button className="btnG" onClick={()=>setShowSettings(false)}>閉じる</button>
             </div>
           </div>
