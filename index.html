@@ -559,21 +559,21 @@ function App() {
       await idbDel(key);
       setImgCache(p=>{ const c={...p}; delete c[key]; return c; });
     } else if(key && key.startsWith("http")) {
-      // DriveURL → fileIdを取り出してGASで削除
       const url = getGasUrl();
-      if(url) {
-        try {
-          // thumbnail URL: ...?id=FILE_ID&sz=...
-          const m = key.match(/[?&]id=([^&]+)/);
-          if(m) {
-            await fetch(url, {
-              method:"POST", headers:{"Content-Type":"text/plain"},
-              body:JSON.stringify({action:"deleteImage", fileId:m[1]}),
-              redirect:"follow"
-            });
-          }
-        } catch(e) { console.warn("Drive削除エラー:", e); }
-      }
+      if(!url) { showToast("err","GAS URL未設定"); return; }
+      const m = key.match(/[?&]id=([^&]+)/);
+      if(!m) { showToast("err","fileID取得失敗: "+key.slice(0,40)); return; }
+      const fileId = m[1];
+      try {
+        const r = await fetch(url, {
+          method:"POST", headers:{"Content-Type":"text/plain"},
+          body:JSON.stringify({action:"deleteImage", fileId}),
+          redirect:"follow"
+        });
+        const d = JSON.parse(await r.text());
+        if(d.ok) showToast("ok","Driveから画像を削除しました");
+        else showToast("err","Drive削除エラー: "+(d.error||"不明"));
+      } catch(e) { showToast("err","通信エラー: "+e.message.slice(0,30)); }
     }
   };
 
