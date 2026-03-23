@@ -1087,7 +1087,11 @@ function App() {
                   {/* 左：本文（曜日・タイトル・概要） */}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",marginBottom:5}}>
-                      {DAYS.map(d=><span key={d} style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:task.days.includes(d)?"#1a1a20":"#eae7e0",color:task.days.includes(d)?"#f0eeea":"#b0ada8"}}>{d}</span>)}
+                      {DAYS.every(d=>task.days.includes(d))
+                        ? <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:700,background:"#1a1a20",color:"#f0eeea"}}>ALL</span>
+                        : DAYS.map(d=><span key={d} style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:task.days.includes(d)?"#1a1a20":"#eae7e0",color:task.days.includes(d)?"#f0eeea":"#b0ada8"}}>{d}</span>)
+                      }
+                      {(getT(task,"date",lang)||task.date)&&<span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:"#1a1a20",color:"#f0eeea"}}>{getT(task,"date",lang)||task.date}</span>}
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                       <div style={{fontSize:15,fontWeight:700,color:"#1a1a20"}}>{getT(task,"title",lang)}</div>
@@ -1104,7 +1108,7 @@ function App() {
                       <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"#b0ada8",lineHeight:1}}>↓</span>
                       <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:700,color:"#908e88",lineHeight:1}}>{fmt(task.endHour,task.endMinute??0)}</span>
                     </>}
-                    {(getT(task,"date",lang)||task.date)&&<span style={{fontSize:10,padding:"2px 5px",borderRadius:4,fontWeight:500,background:"#1a1a20",color:"#f0eeea",textAlign:"center",maxWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getT(task,"date",lang)||task.date}</span>}
+
                     {!editMode&&(()=>{
                       const s=taskStatus[task.id]||"none";
                       const next={none:"doing",doing:"done",done:"none"}[s];
