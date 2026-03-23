@@ -165,6 +165,9 @@ async function pendingGetAll() {
   });
 }
 
+const normalizeStr = s => (s||"").toLowerCase()
+  .replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0)-0xFEE0))
+  .replace(/　/g, " ");
 const getT  = (obj,field,lang) => { if(!obj) return ""; if(!lang||lang==="ja") return obj[field]||""; return obj.translations?.[lang]?.[field]||obj[field]||""; };
 
 const ALL_LANGS = [
@@ -238,6 +241,8 @@ function App() {
   const [passDigits,   setPassDigits]   = useState([]);
   const [passError,    setPassError]    = useState(false);
   const [transProgress,setTransProgress]= useState(null);
+  const [searchQuery,  setSearchQuery]  = useState("");
+  const [showSearch,   setShowSearch]   = useState(false);
   const [menuOpen,    setMenuOpen]    = useState(false);
   const [showQR,      setShowQR]      = useState(false);
   const mkNotice = text => ({id:uid(), text:text.trim(), at:new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})});
@@ -891,25 +896,39 @@ function App() {
     <div style={{minHeight:"100vh",background:"#f0ede8",fontFamily:"'Noto Sans JP',sans-serif",color:"#1a1a20",touchAction:"manipulation"}}>
       <div style={{background:"#1a1a20",position:"sticky",top:0,zIndex:10,display:"flex",flexDirection:"column"}}>
         <div style={{padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,gap:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-            <button className="io" onClick={()=>setMenuOpen(p=>!p)} style={{padding:"7px 10px",fontSize:18,flexShrink:0}}>☰</button>
-            <span style={{fontSize:15,fontWeight:700,color:"#f0eeea",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>作業マニュアル</span>
-            <span style={{display:"flex",alignItems:"center"}}><span className="sdot"/><span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#4caf7d"}}>自動保存中</span></span>
-            {editMode && <span className="ebadge">編集中</span>}
-          </div>
-          <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-            {gasUrl&&<button className="io" onClick={()=>{loadFromGas();flushPendingImages();}} disabled={syncing} style={{position:"relative"}}>
-              <span style={{fontSize:14,display:"inline-block",animation:syncing?"spin .8s linear infinite":"none"}}>🔄</span>
-              {pendingCount>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#f5c842",color:"#1a1a20",borderRadius:99,fontSize:9,fontWeight:700,padding:"1px 4px",lineHeight:1.4}}>{pendingCount}</span>}
-            </button>}
-            <button className={`io${editMode?" em":""}`} onClick={editMode?exitEdit:enterEdit}>{editMode?"編集終了":"編集"}</button>
-            <button className="io" onClick={()=>{if(passcode){setPassDigits([]);setPassError(false);setPassModal("settings");}else setShowSettings(true);}}>⚙️</button>
-          </div>
+          <button className="io" onClick={()=>setMenuOpen(p=>!p)} style={{padding:"7px 10px",fontSize:18,flexShrink:0}}>☰</button>
+          {showSearch ? (
+            <>
+              <input autoFocus value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
+                placeholder={tab==="schedule"?"作業を検索...":"カテゴリ・手順を検索..."}
+                style={{flex:1,background:"rgba(255,255,255,.12)",border:"none",borderRadius:8,padding:"7px 12px",fontSize:14,color:"#f0eeea",fontFamily:"inherit",outline:"none"}}
+              />
+              <button onClick={()=>{setSearchQuery("");setShowSearch(false);}} style={{background:"none",border:"none",color:"#a0a09a",fontSize:13,cursor:"pointer",padding:"0 4px",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>✕</button>
+            </>
+          ) : (
+            <>
+              <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
+                <span style={{fontSize:15,fontWeight:700,color:"#f0eeea",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>作業マニュアル</span>
+                <span style={{display:"flex",alignItems:"center"}}><span className="sdot"/><span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#4caf7d"}}>自動保存中</span></span>
+                {editMode && <span className="ebadge">編集中</span>}
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                {gasUrl&&<button className="io" onClick={loadFromGas} disabled={syncing}>
+                  <span style={{fontSize:14,display:"inline-block",animation:syncing?"spin .8s linear infinite":"none"}}>🔄</span>
+                  {pendingCount>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#f5c842",color:"#1a1a20",borderRadius:99,fontSize:9,fontWeight:700,padding:"1px 4px",lineHeight:1.4}}>{pendingCount}</span>}
+                </button>}
+                <button className={`io${editMode?" em":""}`} onClick={editMode?exitEdit:enterEdit}>{editMode?"編集終了":"編集"}</button>
+                <button className="io" onClick={()=>{if(passcode){setPassDigits([]);setPassError(false);setPassModal("settings");}else setShowSettings(true);}} style={{padding:"8px 10px"}}>⚙️</button>
+              </div>
+            </>
+          )}
         </div>
         <div style={{display:"flex",height:40,borderTop:"1px solid rgba(255,255,255,.08)"}}>
           <button className={`tab-btn${tab==="schedule"?" on":""}`} onClick={()=>setTab("schedule")}><span>タイムスケジュール</span><div className="tab-bar"/></button>
           <button className={`tab-btn${tab==="manual"?" on":""}`} onClick={()=>setTab("manual")}><span>マニュアル</span><div className="tab-bar"/></button>
+          <button onClick={()=>setShowSearch(true)} style={{background:"none",border:"none",color:showSearch?"#f5c842":"#a0a09a",cursor:"pointer",padding:"0 14px",fontSize:16,flexShrink:0}}>🔍</button>
         </div>
+
       </div>
 
       {menuOpen&&(
@@ -1013,9 +1032,20 @@ function App() {
 
           {sorted.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📋</div><div style={{fontSize:15}}>{editMode?"下の「＋ 作業追加」から追加してください。":"編集ボタンを押すと作業を追加できます。"}</div></div>}
           {(()=>{
+            const filteredSorted = searchQuery
+              ? sorted.filter(t =>
+                  normalizeStr(getT(t,"title",lang)).includes(normalizeStr(searchQuery)) ||
+                  normalizeStr(getT(t,"summary",lang)).includes(normalizeStr(searchQuery)) ||
+                  normalizeStr(t.date).includes(normalizeStr(searchQuery)) ||
+                  (t.items||[]).some(i=>
+                    normalizeStr(getT(i,"label",lang)).includes(normalizeStr(searchQuery))||
+                    normalizeStr(getT(i,"detail",lang)).includes(normalizeStr(searchQuery))
+                  )
+                )
+              : sorted;
             // 未処理/作業中タスクの最初のインデックスを探す
-            const firstUnfinished = sorted.findIndex(t => (taskStatus[t.id]||"none") !== "done");
-            return sorted.map((task, idx) => (
+            const firstUnfinished = filteredSorted.findIndex(t => (taskStatus[t.id]||"none") !== "done");
+            return filteredSorted.map((task, idx) => (
               <div key={task.id}>
                 {/* 未完了タスクの最初の上にメモを表示 */}
                 {idx === firstUnfinished && (
@@ -1099,8 +1129,26 @@ function App() {
       {tab==="manual" && (
         <div>
           {manuals.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📖</div><div style={{fontSize:15}}>{editMode?"下の「＋ カテゴリ追加」から追加してください。":"編集ボタンを押すとカテゴリを追加できます。"}</div></div>}
+          {(()=>{
+            const filteredManuals = searchQuery
+              ? manuals.filter(m=>{
+                  const q=normalizeStr(searchQuery);
+                  const hit=s=>normalizeStr(s).includes(q);
+                  return hit(getT(m,"title",lang))||
+                         hit(getT(m,"summary",lang))||
+                         (m.subcategories||[]).some(s=>
+                           hit(getT(s,"title",lang))||
+                           hit(getT(s,"summary",lang))||
+                           (s.items||[]).some(i=>
+                             hit(getT(i,"label",lang))||
+                             hit(getT(i,"detail",lang))
+                           )
+                         );
+                })
+              : manuals;
+            return(
           <DragList
-            items={manuals}
+            items={filteredManuals}
             onReorder={reorderCats}
             editMode={editMode}
             showToast={showToast}
@@ -1161,6 +1209,7 @@ function App() {
             </div>
             )}
           />
+          );})()}
           {editMode&&expandedCat===null&&(
             <div style={{padding:"12px 16px"}}>
               <button onClick={()=>setShowAddCat(true)} style={{background:"transparent",color:"#0d7377",border:"1.5px dashed #0d7377",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span>📁</span> カテゴリ追加</button>
