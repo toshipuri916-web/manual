@@ -113,17 +113,20 @@ async function gasGetAll(url) {
 async function gasUploadImage(url, base64Data, imageId) {
   if(!url) return null;
   try {
-    // GASはContent-Type: text/plainでCORSプリフライトを回避
     const r = await fetch(url, {
       method:"POST",
       headers: {"Content-Type": "text/plain"},
-      body: JSON.stringify({ action:"uploadImage", base64Data, imageId })
+      body: JSON.stringify({ action:"uploadImage", base64Data, imageId }),
+      redirect: "follow"
     });
+    if(!r.ok) { console.warn("GAS HTTP error:", r.status, r.statusText); return null; }
     const text = await r.text();
-    const d = JSON.parse(text);
+    let d;
+    try { d = JSON.parse(text); } catch(e) { console.warn("GAS non-JSON response:", text.slice(0,200)); return null; }
     if(!d.ok) { console.warn("GAS upload error:", d.error); return null; }
-    return d.viewUrl || null;
-  } catch(e) { console.warn("gasUploadImage error:", e); return null; }
+    if(!d.viewUrl) { console.warn("GAS no viewUrl in response:", d); return null; }
+    return d.viewUrl;
+  } catch(e) { console.warn("gasUploadImage fetch error:", e.message); return null; }
 }
 
 // 未送信画像キュー（IndexedDB）
@@ -513,16 +516,17 @@ function App() {
     // GASが設定されていれば即アップロード試行、失敗したらキューに積む
     const url = getGasUrl();
     if(url) {
+      showToast("ok", "Driveにアップロード中...");
       const viewUrl = await gasUploadImage(url, data, key);
       if(viewUrl) {
-        // Drive URLで返す（IndexedDBは残さない）
         await idbDel(key);
         setImgCache(p=>{ const c={...p}; delete c[key]; return c; });
+        showToast("ok", "✅ Driveにアップロード完了");
         return viewUrl;
       } else {
-        // オフライン or エラー → キューに積む
         await pendingAdd(key, data);
         refreshPending();
+        showToast("err", "⚠️ Drive未送信キューに保存（オフライン）");
       }
     }
     return key;
