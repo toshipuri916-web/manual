@@ -1165,6 +1165,32 @@ function App() {
                 </div>}
                 {!gasUrl&&<div style={{fontSize:12,color:"#a0a09a",marginTop:6,lineHeight:1.6}}>GASをデプロイして発行されたURLを入力すると、データが自動的にGASのスプレッドシートに保存され、複数端末で共有できます。</div>}
               </div>
+              {gasUrl&&<div style={{marginBottom:16}}>
+                <label className="lbl">GAS接続テスト（画像アップロード確認）</label>
+                <button className="btnG" onClick={async()=>{
+                  showToast("ok","テスト中...");
+                  // 小さなテスト画像を作成
+                  const c=document.createElement("canvas"); c.width=10; c.height=10;
+                  const ctx=c.getContext("2d"); ctx.fillStyle="#ff0000"; ctx.fillRect(0,0,10,10);
+                  const testData=c.toDataURL("image/jpeg",0.5);
+                  const testId="test_"+Date.now();
+                  const r=await fetch(gasUrl,{
+                    method:"POST",
+                    headers:{"Content-Type":"text/plain"},
+                    body:JSON.stringify({action:"uploadImage",base64Data:testData,imageId:testId}),
+                    redirect:"follow"
+                  });
+                  const txt=await r.text();
+                  console.log("GAS test response:",txt);
+                  try{
+                    const d=JSON.parse(txt);
+                    if(d.ok&&d.viewUrl) showToast("ok","✅ Drive接続OK: "+d.viewUrl.slice(0,40));
+                    else showToast("err","❌ GASエラー: "+(d.error||"不明"));
+                  }catch(e){
+                    showToast("err","❌ レスポンスエラー: "+txt.slice(0,50));
+                  }
+                }}>📡 Drive接続テスト</button>
+              </div>}
               <button className="btnG" onClick={()=>setShowSettings(false)}>閉じる</button>
             </div>
           </div>
