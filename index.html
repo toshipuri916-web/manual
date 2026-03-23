@@ -413,7 +413,14 @@ function App() {
     if(uploaded>0) { refreshPending(); showToast("ok",`画像${uploaded}枚をDriveに同期しました`); }
   };
 
-  const saveGasUrl = url => { setGasUrlState(url); setGasUrl(url); };
+  const saveGasUrl = async url => {
+    setGasUrlState(url);
+    setGasUrl(url);
+    if(url) {
+      // URL設定時に自動でGASから読み込む
+      await loadFromGas();
+    }
+  };
 
   // GASへ保存
   const syncToGas = async (key, value) => {
@@ -1387,15 +1394,10 @@ function App() {
                 <div style={{display:"flex",gap:8}}>
                   <input className="inp" style={{flex:1,fontSize:13}} value={gasUrl} onChange={e=>saveGasUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..."/>
                 </div>
-                {gasUrl&&<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
-                  <div style={{display:"flex",gap:8}}>
-                    <button className="btnP" style={{flex:1}} onClick={()=>{uploadToGas();setShowSettings(false);}}>⬆ GASにアップロード</button>
-                    <button className="btnG" style={{width:"auto",padding:"12px 16px"}} onClick={()=>setShowQR(true)}>📲 QR</button>
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    <button className="btnG" style={{flex:1}} onClick={()=>{loadFromGas();setShowSettings(false);}}>⬇ GASから読み込み</button>
-                    <button className="btnG" style={{flex:1,color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>openConfirm("GAS連携URLを削除しますか？\n削除すると自動同期が停止します。",()=>saveGasUrl(""))}>URLを削除</button>
-                  </div>
+                {gasUrl&&<div style={{marginTop:8,display:"flex",gap:8}}>
+                  <button className="btnG" style={{flex:1}} onClick={()=>{loadFromGas();setShowSettings(false);}}>⬇ GASから読み込み</button>
+                  <button className="btnG" onClick={()=>setShowQR(true)} style={{width:"auto",padding:"12px 16px"}}>📲 QR</button>
+                  <button className="btnG" style={{width:"auto",padding:"12px 16px",color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>openConfirm("GAS連携URLを削除しますか？\n削除すると自動同期が停止します。",()=>saveGasUrl(""))}>削除</button>
                 </div>}
                 {!gasUrl&&<div style={{fontSize:12,color:"#a0a09a",marginTop:6,lineHeight:1.6}}>GASをデプロイして発行されたURLを入力すると、データが自動的にGASのスプレッドシートに保存され、複数端末で共有できます。</div>}
               </div>
