@@ -716,9 +716,30 @@ function App() {
   const addItem = (catId,subId) => { setEditItem({id:uid(),label:"",detail:"",image:null,translations:{},catId,subId,isNew:true}); };
   const uploadItemImageIfNeeded = async (clean) => {
     const url = getGasUrl();
-    if(!url || !clean.image || !isImgKey(clean.image)) return clean;
-    const base64Data = imgCache[clean.image];
-    if(!base64Data) return clean;
+    if(!clean.image || !isImgKey(clean.image)) return clean;
+
+    // IndexedDBから直接読む（staleなimgCacheに頼らない）
+    let base64Data = null;
+    try {
+      const db = await openDB();
+      base64Data = await new Promise((res,rej)=>{
+        const tx = db.transaction(IDB_STORE,"readonly");
+        const req = tx.objectStore(IDB_STORE).get(clean.image);
+        req.onsuccess = e => res(e.target.result||null);
+        req.onerror   = rej;
+      });
+    } catch(e) { console.warn("idb read error:", e); }
+
+    if(!base64Data) {
+      // IndexedDBにない＝既にDriveURL or 画像なし
+      return clean;
+    }
+
+    if(!url) {
+      // GAS未設定：IndexedDBのまま（表示はimgCacheで対応）
+      return clean;
+    }
+
     showToast("ok","Driveに画像をアップロード中...");
     try {
       const r = await fetch(url, {
@@ -726,7 +747,8 @@ function App() {
         body:JSON.stringify({action:"uploadImage", base64Data, imageId:clean.image}),
         redirect:"follow"
       });
-      const d = JSON.parse(await r.text());
+      const txt = await r.text();
+      const d = JSON.parse(txt);
       if(d.ok && d.viewUrl) {
         await idbDel(clean.image);
         setImgCache(p=>{ const c={...p}; delete c[clean.image]; return c; });
@@ -734,11 +756,12 @@ function App() {
         return {...clean, image: d.viewUrl};
       } else {
         showToast("err","❌ Drive保存エラー: "+(d.error||"不明"));
+        return clean;
       }
     } catch(e) {
       showToast("err","❌ 通信エラー: "+e.message.slice(0,30));
+      return clean;
     }
-    return clean;
   };
 
   const saveItem = async item => {
