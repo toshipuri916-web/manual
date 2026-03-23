@@ -420,15 +420,52 @@ function App() {
     const url = getGasUrl(); if(!url) return;
     setSyncing(true);
     try {
+      // IndexedDB内の画像を全てDriveにアップロードしてURLに置き換える
+      const allImgs = await idbGetAll();
+      const imgKeys = Object.keys(allImgs).filter(k => k.startsWith(IMG_PRE));
+      let uploadedCount = 0;
+
+      // 画像URLマップ: imgKey → DriveURL
+      const urlMap = {};
+      for(const imgKey of imgKeys) {
+        showToast("ok", `画像をアップロード中... ${uploadedCount+1}/${imgKeys.length}`);
+        try {
+          const r = await fetch(url, {
+            method:"POST", headers:{"Content-Type":"text/plain"},
+            body:JSON.stringify({action:"uploadImage", base64Data:allImgs[imgKey], imageId:imgKey}),
+            redirect:"follow"
+          });
+          const d = JSON.parse(await r.text());
+          if(d.ok && d.viewUrl) {
+            urlMap[imgKey] = d.viewUrl;
+            await idbDel(imgKey);
+            setImgCache(p=>{ const c={...p}; delete c[imgKey]; return c; });
+            uploadedCount++;
+          }
+        } catch(e) { console.warn("img upload failed:", imgKey, e); }
+      }
+
+      // imgKeyをDriveURLに置き換えたデータを作成
+      const replaceImgInItems = items => items.map(i => ({...i, image: urlMap[i.image] || i.image}));
+      const fixedTasks   = tasks.map(t => ({...t, items: replaceImgInItems(t.items||[])}));
+      const fixedManuals = manuals.map(m => ({...m, subcategories:(m.subcategories||[]).map(s => ({...s, items: replaceImgInItems(s.items||[])}))}));
+
+      // 置き換えたデータをstateに反映
+      if(uploadedCount > 0) {
+        setTasks(fixedTasks);
+        setManuals(fixedManuals);
+      }
+
+      // GASに送信
       await Promise.all([
-        gasFetch(url, SCH_KEY, tasks),
-        gasFetch(url, MAN_KEY, manuals),
+        gasFetch(url, SCH_KEY, fixedTasks),
+        gasFetch(url, MAN_KEY, fixedManuals),
         gasFetch(url, CFG_KEY, {lang, enabledLangs, passcode}),
         gasFetch(url, "manual_admin_notices_v1", adminNotices),
         gasFetch(url, "manual_memo_notices_v1",  memoNotices),
       ]);
       setLastSync(new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}));
-      showToast("ok","GASにアップロードしました");
+      showToast("ok", uploadedCount > 0 ? `画像${uploadedCount}枚を含めてアップロード完了` : "GASにアップロードしました");
     } catch(e) {
       showToast("err","アップロードエラー: "+e.message);
     } finally { setSyncing(false); }
