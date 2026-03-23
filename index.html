@@ -178,6 +178,7 @@ function App() {
   const [passDigits,   setPassDigits]   = useState([]);
   const [passError,    setPassError]    = useState(false);
   const [transProgress,setTransProgress]= useState(null);
+  const [menuOpen,    setMenuOpen]    = useState(false);
   const mkNotice = text => ({id:uid(), text:text.trim(), at:new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})});
   const [adminNotices, setAdminNoticesRaw] = useState(()=>loadJ("manual_admin_notices_v1")??[]);
   const setAdminNotices = u => setAdminNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_admin_notices_v1",JSON.stringify(n));}catch{} syncToGas("manual_admin_notices_v1",n); return n; });
@@ -187,7 +188,7 @@ function App() {
   const [newMemoText,   setNewMemoText]   = useState("");
   const [noticeOpen,    setNoticeOpen]    = useState(false);
   // タスクの進捗状態（当日リセット）
-  const STATUS_KEY = "task_status_" + new Date().toLocaleDateString("ja-JP").replace(/\//g,"-");
+  const STATUS_KEY = "task_status_" + new Date().toISOString().slice(0,10);
   const [taskStatus, setTaskStatusRaw] = useState(()=>{ try{return JSON.parse(localStorage.getItem(STATUS_KEY))||{};}catch{return{};} });
   const setTaskStatus = u => setTaskStatusRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem(STATUS_KEY,JSON.stringify(n));}catch{} return n; });
   // 時刻更新
@@ -345,8 +346,8 @@ function App() {
       if(all["manual_sch_v1"]) setTasks(all["manual_sch_v1"]);
       if(all["manual_cat_v2"]) setManuals(all["manual_cat_v2"]);
       if(all["manual_cfg_v1"]) { const c=all["manual_cfg_v1"]; if(c.lang) setLangR(c.lang); if(c.enabledLangs) setEnabledLangsR(c.enabledLangs); if(c.passcode!==undefined) setPasscodeR(c.passcode); saveJ(CFG_KEY,c); }
-      if(all["manual_admin_notices_v1"]) setAdminNoticesRaw(all["manual_admin_notices_v1"]);
-      if(all["manual_memo_notices_v1"])  setMemoNoticesRaw(all["manual_memo_notices_v1"]);
+      if(all["manual_admin_notices_v1"]) setAdminNotices(all["manual_admin_notices_v1"]);
+      if(all["manual_memo_notices_v1"])  setMemoNotices(all["manual_memo_notices_v1"]);
       setLastSync(new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}));
       showToast("ok","同期しました");
     } finally { setSyncing(false); }
@@ -634,15 +635,15 @@ function App() {
     <div style={{minHeight:"100vh",background:"#f0ede8",fontFamily:"'Noto Sans JP',sans-serif",color:"#1a1a20",touchAction:"manipulation"}}>
       <div style={{background:"#1a1a20",position:"sticky",top:0,zIndex:10,display:"flex",flexDirection:"column"}}>
         <div style={{padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,gap:8}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+            <button className="io" onClick={()=>setMenuOpen(p=>!p)} style={{padding:"7px 10px",fontSize:18,flexShrink:0}}>☰</button>
             <span style={{fontSize:15,fontWeight:700,color:"#f0eeea",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>作業マニュアル</span>
             <span style={{display:"flex",alignItems:"center"}}><span className="sdot"/><span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#4caf7d"}}>自動保存中</span></span>
             {editMode && <span className="ebadge">編集中</span>}
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-            {enabledLangs.map(code=>{const l=ALL_LANGS.find(x=>x.code===code);if(!l)return null;return(<button key={code} className={`io${lang===code?" em":""}`} onClick={()=>handleLangSwitch(code)}><span style={{fontSize:15}}>{l.flag}</span><span style={{fontSize:11}}>{code==="ja"?"JP":code.toUpperCase()}</span></button>);})}
-            {gasUrl&&<button className="io" onClick={loadFromGas} style={{opacity:syncing?.5:1}}>
-              {syncing?"⟳":"☁"}{lastSync&&<span style={{fontSize:10,marginLeft:3}}>{lastSync}</span>}
+            {gasUrl&&<button className="io" onClick={loadFromGas} disabled={syncing}>
+              <span style={{fontSize:14,display:"inline-block",animation:syncing?"spin .8s linear infinite":"none"}}>🔄</span>
             </button>}
             <button className={`io${editMode?" em":""}`} onClick={editMode?exitEdit:enterEdit}>{editMode?"編集終了":"編集"}</button>
             <button className="io" onClick={()=>{if(passcode){setPassDigits([]);setPassError(false);setPassModal("settings");}else setShowSettings(true);}}>⚙️</button>
@@ -653,6 +654,30 @@ function App() {
           <button className={`tab-btn${tab==="manual"?" on":""}`} onClick={()=>setTab("manual")}><span>マニュアル</span><div className="tab-bar"/></button>
         </div>
       </div>
+
+      {menuOpen&&(
+        <div style={{position:"fixed",inset:0,zIndex:200}} onClick={()=>setMenuOpen(false)}>
+          <div style={{position:"absolute",top:92,right:12,background:"#faf8f4",borderRadius:16,boxShadow:"0 8px 32px rgba(0,0,0,.2)",minWidth:240,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+            {/* 言語選択 */}
+            <div style={{padding:"12px 16px 8px",borderBottom:"1px solid #eae7e0"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#908e88",letterSpacing:.08,marginBottom:10,fontFamily:"'IBM Plex Mono',monospace"}}>LANGUAGE</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                {enabledLangs.map(c=>{const l=ALL_LANGS.find(x=>x.code===c);if(!l)return null;return(
+                  <button key={c} onClick={()=>{handleLangSwitch(c);setMenuOpen(false);}}
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:8,border:`1.5px solid ${lang===c?"#1a1a20":"#dedad0"}`,background:lang===c?"#1a1a20":"#fff",color:lang===c?"#f0eeea":"#606060",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                    <span style={{fontSize:15}}>{l.flag}</span>
+                    <span>{l.native}</span>
+                  </button>
+                );})}
+              </div>
+            </div>
+            {/* 今後の項目用プレースホルダー */}
+            <div style={{padding:"8px 0"}}>
+              <div style={{padding:"10px 16px",fontSize:14,color:"#b0ada8",fontStyle:"italic"}}>（今後の機能追加予定）</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && <div className="toast" style={{background:toast.type==="ok"?"#1a1a20":"#c05050",color:"#f5f3ef"}}>{toast.type==="ok"?"✓ ":"✕ "}{toast.text}</div>}
       {transProgress && <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.7)",zIndex:500,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{width:40,height:40,border:"3px solid rgba(255,255,255,.2)",borderTopColor:"#f0eeea",borderRadius:"50%",animation:"spin .8s linear infinite"}}/><div style={{color:"#f0eeea",fontSize:16,fontWeight:600}}>{transProgress}</div></div>}
