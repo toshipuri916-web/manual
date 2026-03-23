@@ -79,6 +79,32 @@ let _uid = Date.now();
 const uid = () => String(++_uid);
 const loadJ = key => { try { const r=localStorage.getItem(key); return r?JSON.parse(r):null; } catch { return null; } };
 const saveJ = (key,v) => { try { localStorage.setItem(key,JSON.stringify(v)); } catch {} };
+/* ── GAS同期 ── */
+const GAS_KEY = "manual_gas_url_v1";
+const getGasUrl = () => { try{return localStorage.getItem(GAS_KEY)||"";}catch{return "";} };
+const setGasUrl = url => { try{localStorage.setItem(GAS_KEY,url);}catch{} };
+
+async function gasFetch(url, key, value) {
+  if(!url) return null;
+  try {
+    if(value===undefined) {
+      const r = await fetch(`${url}?key=${encodeURIComponent(key)}`);
+      const d = await r.json(); return d.ok ? d.data : null;
+    } else {
+      const r = await fetch(url, {method:"POST",body:JSON.stringify({key,value})});
+      const d = await r.json(); return d.ok;
+    }
+  } catch { return null; }
+}
+
+async function gasGetAll(url) {
+  if(!url) return null;
+  try {
+    const r = await fetch(url);
+    const d = await r.json(); return d.ok ? d.data : null;
+  } catch { return null; }
+}
+
 const getT  = (obj,field,lang) => { if(!obj) return ""; if(!lang||lang==="ja") return obj[field]||""; return obj.translations?.[lang]?.[field]||obj[field]||""; };
 
 const ALL_LANGS = [
@@ -154,9 +180,9 @@ function App() {
   const [transProgress,setTransProgress]= useState(null);
   const mkNotice = text => ({id:uid(), text:text.trim(), at:new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})});
   const [adminNotices, setAdminNoticesRaw] = useState(()=>loadJ("manual_admin_notices_v1")??[]);
-  const setAdminNotices = u => setAdminNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_admin_notices_v1",JSON.stringify(n));}catch{} return n; });
+  const setAdminNotices = u => setAdminNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_admin_notices_v1",JSON.stringify(n));}catch{} syncToGas("manual_admin_notices_v1",n); return n; });
   const [memoNotices,  setMemoNoticesRaw]  = useState(()=>loadJ("manual_memo_notices_v1")??[]);
-  const setMemoNotices  = u => setMemoNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_memo_notices_v1", JSON.stringify(n));}catch{} return n; });
+  const setMemoNotices  = u => setMemoNoticesRaw(p=>{ const n=typeof u==="function"?u(p):u; try{localStorage.setItem("manual_memo_notices_v1", JSON.stringify(n));}catch{} syncToGas("manual_memo_notices_v1",n); return n; });
   const [newAdminText,  setNewAdminText]  = useState("");
   const [newMemoText,   setNewMemoText]   = useState("");
   const [noticeOpen,    setNoticeOpen]    = useState(false);
@@ -278,6 +304,35 @@ function App() {
 
   useEffect(() => { idbGetAll().then(all=>setImgCache(all)).catch(()=>{}); }, []);
 
+  const [gasUrl,    setGasUrlState] = useState(()=>getGasUrl());
+  const [syncing,   setSyncing]     = useState(false);
+  const [lastSync,  setLastSync]    = useState(null);
+
+  const saveGasUrl = url => { setGasUrlState(url); setGasUrl(url); };
+
+  // GASへ保存
+  const syncToGas = async (key, value) => {
+    const url = getGasUrl(); if(!url) return;
+    await gasFetch(url, key, value);
+  };
+
+  // GASから全データ読み込み（手動 or 起動時）
+  const loadFromGas = async () => {
+    const url = getGasUrl(); if(!url) return;
+    setSyncing(true);
+    try {
+      const all = await gasGetAll(url);
+      if(!all) { showToast("err","GAS接続エラー"); return; }
+      if(all["manual_sch_v1"]) setTasks(all["manual_sch_v1"]);
+      if(all["manual_cat_v2"]) setManuals(all["manual_cat_v2"]);
+      if(all["manual_cfg_v1"]) { const c=all["manual_cfg_v1"]; if(c.lang) setLangR(c.lang); if(c.enabledLangs) setEnabledLangsR(c.enabledLangs); if(c.passcode!==undefined) setPasscodeR(c.passcode); saveJ(CFG_KEY,c); }
+      if(all["manual_admin_notices_v1"]) setAdminNoticesRaw(all["manual_admin_notices_v1"]);
+      if(all["manual_memo_notices_v1"])  setMemoNoticesRaw(all["manual_memo_notices_v1"]);
+      setLastSync(new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}));
+      showToast("ok","同期しました");
+    } finally { setSyncing(false); }
+  };
+
   // 起動時にID重複を自動修正
   useEffect(() => {
     const { tasks: fixedTasks, manuals: fixedManuals } = deduplicateIds(tasks, manuals);
@@ -294,8 +349,8 @@ function App() {
   const setLang         = v => { setLangR(v);         saveCfg({lang:v}); };
   const setEnabledLangs = v => { setEnabledLangsR(v); saveCfg({enabledLangs:v}); };
   const setPasscode     = v => { setPasscodeR(v);      saveCfg({passcode:v}); };
-  const setTasks   = u => setTasksRaw(p  => { const n=typeof u==="function"?u(p):u;  saveJ(SCH_KEY,n); return n; });
-  const setManuals = u => setManualsRaw(p => { const n=typeof u==="function"?u(p):u; saveJ(MAN_KEY,n); return n; });
+  const setTasks   = u => setTasksRaw(p  => { const n=typeof u==="function"?u(p):u;  saveJ(SCH_KEY,n); syncToGas(SCH_KEY,n); return n; });
+  const setManuals = u => setManualsRaw(p => { const n=typeof u==="function"?u(p):u; saveJ(MAN_KEY,n); syncToGas(MAN_KEY,n); return n; });
 
   const showToast   = (type,text) => { setToast({type,text}); setTimeout(()=>setToast(null),3000); };
   const openConfirm = (msg,onOk)  => setConfirm({msg,onOk});
@@ -567,6 +622,9 @@ function App() {
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
             {enabledLangs.map(code=>{const l=ALL_LANGS.find(x=>x.code===code);if(!l)return null;return(<button key={code} className={`io${lang===code?" em":""}`} onClick={()=>handleLangSwitch(code)}><span style={{fontSize:15}}>{l.flag}</span><span style={{fontSize:11}}>{code==="ja"?"JP":code.toUpperCase()}</span></button>);})}
+            {gasUrl&&<button className="io" onClick={loadFromGas} style={{opacity:syncing?.5:1}}>
+              {syncing?"⟳":"☁"}{lastSync&&<span style={{fontSize:10,marginLeft:3}}>{lastSync}</span>}
+            </button>}
             <button className={`io${editMode?" em":""}`} onClick={editMode?exitEdit:enterEdit}>{editMode?"編集終了":"編集"}</button>
             <button className="io" onClick={()=>{if(passcode){setPassDigits([]);setPassError(false);setPassModal("settings");}else setShowSettings(true);}}>⚙️</button>
           </div>
@@ -927,6 +985,17 @@ function App() {
                     </div>
                   );})}
                 </div>
+              </div>
+              <div style={{marginBottom:24}}>
+                <label className="lbl">GAS連携URL（複数端末でデータ共有）</label>
+                <div style={{display:"flex",gap:8}}>
+                  <input className="inp" style={{flex:1,fontSize:13}} value={gasUrl} onChange={e=>saveGasUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..."/>
+                </div>
+                {gasUrl&&<div style={{marginTop:8,display:"flex",gap:8}}>
+                  <button className="btnG" style={{flex:1}} onClick={()=>{loadFromGas();setShowSettings(false);}}>今すぐ同期</button>
+                  <button className="btnG" style={{flex:1,color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>saveGasUrl("")}>URLを削除</button>
+                </div>}
+                {!gasUrl&&<div style={{fontSize:12,color:"#a0a09a",marginTop:6,lineHeight:1.6}}>GASをデプロイして発行されたURLを入力すると、データが自動的にGASのスプレッドシートに保存され、複数端末で共有できます。</div>}
               </div>
               <button className="btnG" onClick={()=>setShowSettings(false)}>閉じる</button>
             </div>
