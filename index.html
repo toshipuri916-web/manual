@@ -513,37 +513,7 @@ function App() {
     await idbSet(key, data);
     setImgCache(p=>({...p,[key]:data}));
 
-    // GASが設定されていれば即アップロード試行
-    const url = getGasUrl();
-    if(url) {
-      showToast("ok", "Driveにアップロード中...");
-      try {
-        const r = await fetch(url, {
-          method:"POST",
-          headers:{"Content-Type":"text/plain"},
-          body:JSON.stringify({action:"uploadImage", base64Data:data, imageId:key}),
-          redirect:"follow"
-        });
-        const txt = await r.text();
-        let d;
-        try { d = JSON.parse(txt); } catch(e) {
-          showToast("err","❌ レスポンス解析エラー: "+txt.slice(0,40));
-          await pendingAdd(key, data); refreshPending(); return key;
-        }
-        if(d.ok && d.viewUrl) {
-          await idbDel(key);
-          setImgCache(p=>{ const c={...p}; delete c[key]; return c; });
-          showToast("ok","✅ Driveにアップロード完了");
-          return d.viewUrl;
-        } else {
-          showToast("err","❌ GASエラー: "+(d.error||JSON.stringify(d).slice(0,40)));
-          await pendingAdd(key, data); refreshPending(); return key;
-        }
-      } catch(e) {
-        showToast("err","❌ 通信エラー: "+e.message.slice(0,40));
-        await pendingAdd(key, data); refreshPending();
-      }
-    }
+    // 一旦IndexedDBに保存（Driveアップロードは保存ボタン時）
     return key;
   };
   const deleteImage = async key => { if(isImgKey(key)){await idbDel(key);setImgCache(p=>{const c={...p};delete c[key];return c;});} };
@@ -707,7 +677,34 @@ function App() {
 
   /* -- 手順 CRUD -- */
   const addItem = (catId,subId) => { setEditItem({id:uid(),label:"",detail:"",image:null,translations:{},catId,subId,isNew:true}); };
-  const saveItem = item => {
+  const uploadItemImageIfNeeded = async (clean) => {
+    const url = getGasUrl();
+    if(!url || !clean.image || !isImgKey(clean.image)) return clean;
+    const base64Data = imgCache[clean.image];
+    if(!base64Data) return clean;
+    showToast("ok","Driveに画像をアップロード中...");
+    try {
+      const r = await fetch(url, {
+        method:"POST", headers:{"Content-Type":"text/plain"},
+        body:JSON.stringify({action:"uploadImage", base64Data, imageId:clean.image}),
+        redirect:"follow"
+      });
+      const d = JSON.parse(await r.text());
+      if(d.ok && d.viewUrl) {
+        await idbDel(clean.image);
+        setImgCache(p=>{ const c={...p}; delete c[clean.image]; return c; });
+        showToast("ok","✅ Driveにアップロード完了");
+        return {...clean, image: d.viewUrl};
+      } else {
+        showToast("err","❌ Drive保存エラー: "+(d.error||"不明"));
+      }
+    } catch(e) {
+      showToast("err","❌ 通信エラー: "+e.message.slice(0,30));
+    }
+    return clean;
+  };
+
+  const saveItem = async item => {
     const {catId,subId,isNew,...clean}=item;
     const orig = (() => {
       if(isNew) return null;
@@ -718,7 +715,8 @@ function App() {
     })();
     const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
     const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
-    setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:isNew?[...s.items,clean]:s.items.map(i=>i.id===clean.id?cleanNoTrans:i)}:s)}:m));
+    const uploaded = await uploadItemImageIfNeeded(cleanNoTrans);
+    setManuals(p=>p.map(m=>m.id===catId?{...m,subcategories:(m.subcategories||[]).map(s=>s.id===subId?{...s,items:isNew?[...s.items,uploaded]:s.items.map(i=>i.id===uploaded.id?uploaded:i)}:s)}:m));
     setEditItem(null);
   };
   const deleteItem = item => openConfirm("この手順を削除しますか？",async()=>{
@@ -740,18 +738,13 @@ function App() {
     showToast("ok", `「${sub.title}」をリンクしました`);
   };
 
-  const saveTaskItem = item => {
+  const saveTaskItem = async item => {
     const {taskId,isNew,...clean}=item;
-    const orig = (() => {
-      if(isNew) return null;
-      const cat = manuals.find(m=>m.id===item.catId)||tasks.find(t=>t.id===item.taskId);
-      if(!cat) return null;
-      const items = cat.items || cat.subcategories?.find(s=>s.id===item.subId)?.items || [];
-      return items.find(i=>i.id===clean.id);
-    })();
+    const orig = tasks.find(t=>t.id===taskId)?.items?.find(i=>i.id===clean.id);
     const textChanged = orig && (orig.label!==clean.label || orig.detail!==clean.detail);
     const cleanNoTrans = isNew ? clean : {...clean, translations: textChanged ? {} : (orig?.translations||{})};
-    setTasks(p=>p.map(t=>t.id===taskId?{...t,items:isNew?[...(t.items||[]),clean]:t.items.map(i=>i.id===clean.id?cleanNoTrans:i)}:t));
+    const uploaded = await uploadItemImageIfNeeded(cleanNoTrans);
+    setTasks(p=>p.map(t=>t.id===taskId?{...t,items:isNew?[...(t.items||[]),uploaded]:t.items.map(i=>i.id===clean.id?uploaded:i)}:t));
     setEditItem(null);
   };
   const deleteTaskItem = item => openConfirm("この手順を削除しますか？",async()=>{
