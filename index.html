@@ -608,12 +608,6 @@ function App() {
         });
         const d = JSON.parse(await r.text());
         if(d.ok) {
-          // IndexedDB内の孤立したimg_キーも掃除
-          const allImgs = await idbGetAll();
-          for(const k of Object.keys(allImgs)) {
-            if(k.startsWith(IMG_PRE)) { await idbDel(k); }
-          }
-          setImgCache({});
           showToast("ok","Driveから画像を削除しました");
         } else showToast("err","Drive削除エラー: "+(d.error||"不明"));
       } catch(e) { showToast("err","通信エラー: "+e.message.slice(0,30)); }
