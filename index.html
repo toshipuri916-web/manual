@@ -105,6 +105,55 @@ async function gasGetAll(url) {
   } catch { return null; }
 }
 
+// 画像アップロード（GAS経由でDriveへ）
+async function gasUploadImage(url, base64Data, imageId) {
+  if(!url) return null;
+  try {
+    const r = await fetch(url, {
+      method:"POST",
+      body: JSON.stringify({ action:"uploadImage", base64Data, imageId })
+    });
+    const d = await r.json();
+    return d.ok ? d.viewUrl : null;
+  } catch { return null; }
+}
+
+// 未送信画像キュー（IndexedDB）
+const PENDING_STORE = "pending_uploads";
+function openPendingDB() {
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open("pending_db",1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore(PENDING_STORE, {keyPath:"imageId"});
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+async function pendingAdd(imageId, base64Data) {
+  const db = await openPendingDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(PENDING_STORE,"readwrite");
+    tx.objectStore(PENDING_STORE).put({imageId, base64Data});
+    tx.oncomplete = res; tx.onerror = rej;
+  });
+}
+async function pendingRemove(imageId) {
+  const db = await openPendingDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(PENDING_STORE,"readwrite");
+    tx.objectStore(PENDING_STORE).delete(imageId);
+    tx.oncomplete = res; tx.onerror = rej;
+  });
+}
+async function pendingGetAll() {
+  const db = await openPendingDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(PENDING_STORE,"readonly");
+    const req = tx.objectStore(PENDING_STORE).getAll();
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = rej;
+  });
+}
+
 const getT  = (obj,field,lang) => { if(!obj) return ""; if(!lang||lang==="ja") return obj[field]||""; return obj.translations?.[lang]?.[field]||obj[field]||""; };
 
 const ALL_LANGS = [
@@ -303,11 +352,35 @@ function App() {
     }
   }, []);
 
-  useEffect(() => { idbGetAll().then(all=>setImgCache(all)).catch(()=>{}); }, []);
+  useEffect(() => { idbGetAll().then(all=>setImgCache(all)).catch(()=>{}); refreshPending(); }, []);
 
   const [gasUrl,    setGasUrlState] = useState(()=>getGasUrl());
   const [syncing,   setSyncing]     = useState(false);
-  const [lastSync,  setLastSync]    = useState(null);
+  const [lastSync,    setLastSync]     = useState(null);
+  const [pendingCount,setPendingCount] = useState(0);
+
+  // 未送信画像をカウント
+  const refreshPending = () => pendingGetAll().then(p=>setPendingCount(p.length)).catch(()=>{});
+
+  // 未送信画像をGASへ送信
+  const flushPendingImages = async () => {
+    const url = getGasUrl(); if(!url) return;
+    const pending = await pendingGetAll();
+    if(!pending.length) return;
+    let uploaded = 0;
+    for(const {imageId, base64Data} of pending) {
+      const viewUrl = await gasUploadImage(url, base64Data, imageId);
+      if(viewUrl) {
+        // Drive URLで置き換える
+        const replaceUrl = (items) => items.map(i => i.image===imageId ? {...i,image:viewUrl} : i);
+        setTasks(p => p.map(t => ({...t, items:replaceUrl(t.items||[])})));
+        setManuals(p => p.map(m => ({...m, subcategories:(m.subcategories||[]).map(s => ({...s, items:replaceUrl(s.items||[])}))})));
+        await pendingRemove(imageId);
+        uploaded++;
+      }
+    }
+    if(uploaded>0) { refreshPending(); showToast("ok",`画像${uploaded}枚をDriveに同期しました`); }
+  };
 
   const saveGasUrl = url => { setGasUrlState(url); setGasUrl(url); };
 
@@ -350,6 +423,7 @@ function App() {
       if(all["manual_memo_notices_v1"])  setMemoNotices(all["manual_memo_notices_v1"]);
       setLastSync(new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}));
       showToast("ok","同期しました");
+      flushPendingImages();
     } finally { setSyncing(false); }
   };
 
@@ -374,7 +448,7 @@ function App() {
 
   const showToast   = (type,text) => { setToast({type,text}); setTimeout(()=>setToast(null),3000); };
   const openConfirm = (msg,onOk)  => setConfirm({msg,onOk});
-  const resolveImg  = v => { if(!v) return null; return isImgKey(v)?(imgCache[v]??null):v; };
+  const resolveImg  = v => { if(!v) return null; if(v.startsWith('http')) return v; return isImgKey(v)?(imgCache[v]??null):v; };
 
   /* -- 編集モード -- */
   const enterEdit = () => { if(!passcode){setEditMode(true);return;} setPassDigits([]); setPassError(false); setPassModal("enter"); };
@@ -408,10 +482,28 @@ function App() {
 
   /* -- 画像 -- */
   const saveImage = async (file,oldKey) => {
-    const data=await compressImage(file);
+    const data = await compressImage(file);
     if(isImgKey(oldKey)) await idbDel(oldKey);
-    const key=`${IMG_PRE}${uid()}`; await idbSet(key,data);
-    setImgCache(p=>({...p,[key]:data})); return key;
+    const key = `${IMG_PRE}${uid()}`;
+    await idbSet(key, data);
+    setImgCache(p=>({...p,[key]:data}));
+
+    // GASが設定されていれば即アップロード試行、失敗したらキューに積む
+    const url = getGasUrl();
+    if(url) {
+      const viewUrl = await gasUploadImage(url, data, key);
+      if(viewUrl) {
+        // Drive URLで返す（IndexedDBは残さない）
+        await idbDel(key);
+        setImgCache(p=>{ const c={...p}; delete c[key]; return c; });
+        return viewUrl;
+      } else {
+        // オフライン or エラー → キューに積む
+        await pendingAdd(key, data);
+        refreshPending();
+      }
+    }
+    return key;
   };
   const deleteImage = async key => { if(isImgKey(key)){await idbDel(key);setImgCache(p=>{const c={...p};delete c[key];return c;});} };
 
@@ -642,8 +734,9 @@ function App() {
             {editMode && <span className="ebadge">編集中</span>}
           </div>
           <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-            {gasUrl&&<button className="io" onClick={loadFromGas} disabled={syncing}>
+            {gasUrl&&<button className="io" onClick={()=>{loadFromGas();flushPendingImages();}} disabled={syncing} style={{position:"relative"}}>
               <span style={{fontSize:14,display:"inline-block",animation:syncing?"spin .8s linear infinite":"none"}}>🔄</span>
+              {pendingCount>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#f5c842",color:"#1a1a20",borderRadius:99,fontSize:9,fontWeight:700,padding:"1px 4px",lineHeight:1.4}}>{pendingCount}</span>}
             </button>}
             <button className={`io${editMode?" em":""}`} onClick={editMode?exitEdit:enterEdit}>{editMode?"編集終了":"編集"}</button>
             <button className="io" onClick={()=>{if(passcode){setPassDigits([]);setPassError(false);setPassModal("settings");}else setShowSettings(true);}}>⚙️</button>
