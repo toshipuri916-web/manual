@@ -715,10 +715,13 @@ function App() {
   /* -- 手順 CRUD -- */
   const addItem = (catId,subId) => { setEditItem({id:uid(),label:"",detail:"",image:null,translations:{},catId,subId,isNew:true}); };
   const uploadItemImageIfNeeded = async (clean) => {
-    const url = getGasUrl();
     if(!clean.image || !isImgKey(clean.image)) return clean;
 
-    // IndexedDBから直接読む（staleなimgCacheに頼らない）
+    // GAS未設定ならIndexedDBのまま
+    const url = getGasUrl();
+    if(!url) return clean;
+
+    // IndexedDBから直接読む
     let base64Data = null;
     try {
       const db = await openDB();
@@ -731,14 +734,12 @@ function App() {
     } catch(e) { console.warn("idb read error:", e); }
 
     if(!base64Data) {
-      // IndexedDBにない＝既にDriveURL or 画像なし
+      // IndexedDBにない = 既にDriveURL
       return clean;
     }
 
-    if(!url) {
-      // GAS未設定：IndexedDBのまま（表示はimgCacheで対応）
-      return clean;
-    }
+    // データサイズ確認
+    console.log("uploading image, size:", Math.round(base64Data.length/1024)+"KB", "key:", clean.image);
 
     showToast("ok","Driveに画像をアップロード中...");
     try {
