@@ -1205,6 +1205,17 @@ function LinkText({ text }) {
   )}</>;
 }
 
+
+/* -- 起動時ID重複修正 -- */
+function deduplicateIds(tasks, manuals) {
+  const seen = new Set();
+  const newId = () => { let id = String(Date.now() + Math.random()); while(seen.has(id)) id = String(Date.now() + Math.random()); seen.add(id); return id; };
+  const fixItem = i => { const id = seen.has(i.id) ? newId() : (seen.add(i.id), i.id); return {...i, id}; };
+  const fixSub  = s => { const id = seen.has(s.id) ? newId() : (seen.add(s.id), s.id); return {...s, id, items:(s.items||[]).map(fixItem)}; };
+  const fixTask = t => { const id = seen.has(t.id) ? newId() : (seen.add(t.id), t.id); return {...t, id, items:(t.items||[]).map(fixItem)}; };
+  const fixCat  = m => { const id = seen.has(m.id) ? newId() : (seen.add(m.id), m.id); return {...m, id, subcategories:(m.subcategories||[]).map(fixSub)}; };
+  return { tasks: tasks.map(fixTask), manuals: manuals.map(fixCat) };
+}
 /* -- DragList -- */
 function DragList({ items, onReorder, editMode, showToast, renderItem }) {
   const [local, setLocal] = React.useState(items);
