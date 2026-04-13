@@ -913,7 +913,7 @@ function App() {
   const currentSub = selSub ? (manuals.find(m=>m.id===selSub.catId)?.subcategories||[]).find(s=>s.id===selSub.subId) : null;
 
   return (
-    <div style={{minHeight:"100vh",background:"#f0ede8",fontFamily:"'Noto Sans JP',sans-serif",color:"#1a1a20",touchAction:"manipulation"}}>
+    <div style={{minHeight:"100vh",background:"#f0ede8",fontFamily:"Noto Sans JP,sans-serif",color:"#1a1a20",touchAction:"manipulation"}}>
       <div style={{background:"#1a1a20",position:"sticky",top:0,zIndex:10,display:"flex",flexDirection:"column"}}>
         <div style={{padding:"0 16px",display:"flex",alignItems:"center",justifyContent:"space-between",height:52,gap:8}}>
           <button className="io" onClick={()=>setMenuOpen(p=>!p)} style={{padding:"7px 10px",fontSize:18,flexShrink:0}}>☰</button>
@@ -929,7 +929,7 @@ function App() {
             <>
               <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
                 <span style={{fontSize:15,fontWeight:700,color:"#f0eeea",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>作業マニュアル</span>
-                <span style={{display:"flex",alignItems:"center"}}><span className="sdot"/><span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:"#4caf7d"}}>自動保存中</span></span>
+                <span style={{display:"flex",alignItems:"center"}}><span className="sdot"/><span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:10,color:"#4caf7d"}}>自動保存中</span></span>
                 {editMode && <span className="ebadge">編集中</span>}
               </div>
               <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
@@ -956,7 +956,7 @@ function App() {
           <div style={{position:"absolute",top:92,right:12,background:"#faf8f4",borderRadius:16,boxShadow:"0 8px 32px rgba(0,0,0,.2)",minWidth:240,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
             {/* 言語選択 */}
             <div style={{padding:"12px 16px 8px",borderBottom:"1px solid #eae7e0"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#908e88",letterSpacing:.08,marginBottom:10,fontFamily:"'IBM Plex Mono',monospace"}}>LANGUAGE</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#908e88",letterSpacing:.08,marginBottom:10,fontFamily:"IBM Plex Mono,monospace"}}>LANGUAGE</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {enabledLangs.map(c=>{const l=ALL_LANGS.find(x=>x.code===c);if(!l)return null;return(
                   <button key={c} onClick={()=>{handleLangSwitch(c);setMenuOpen(false);}}
@@ -982,21 +982,18 @@ function App() {
           {/* 現在日時 */}
           <div style={{padding:"12px 16px",borderBottom:"1px solid #eae7e0",background:"#fff",position:"sticky",top:92,zIndex:6,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:22,fontWeight:700,color:"#1a1a20",letterSpacing:1,lineHeight:1}}>
+              <div style={{fontFamily:"IBM Plex Mono,monospace",fontSize:22,fontWeight:700,color:"#1a1a20",letterSpacing:1,lineHeight:1}}>
                 {now.getHours().toString().padStart(2,"0")}:{now.getMinutes().toString().padStart(2,"0")}
               </div>
               <div style={{fontSize:13,color:"#908e88",marginTop:3}}>
                 {now.getFullYear()}年{now.getMonth()+1}月{now.getDate()}日（{"日月火水木金土"[now.getDay()]}）
               </div>
             </div>
-
           </div>
 
           {/* 連絡事項カード */}
-          
-          {/* 連絡事項カード（管理者のみ） */}
           {(
-            <div style={{position:"sticky",top:92,zIndex:5,background:"#fffbe6",borderBottom:"1px solid #f0c840"}}>
+            <div style={{position:"sticky",top:155,zIndex:5,background:"#fffbe6",borderBottom:"1px solid #f0c840"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 14px",cursor:"pointer"}} onClick={()=>setNoticeOpen(p=>!p)}>
                 <span style={{fontSize:15}}>📌</span>
                 <span style={{flex:1,fontSize:13,fontWeight:700,color:"#806000"}}>連絡事項・注意事項</span>
@@ -1007,7 +1004,7 @@ function App() {
                 <div style={{background:"#fffef5",borderTop:"1px solid #f5e070",padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
                   {(adminNotices.length>0||editMode)&&(
                     <div>
-                      <div style={{fontSize:11,fontWeight:700,color:"#a07000",marginBottom:6,display:"flex",alignItems:"center",gap:5}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#a07000",marginBottom:6,letterSpacing:.05,display:"flex",alignItems:"center",gap:5}}>
                         <span>🔒</span> 管理者・注意事項
                       </div>
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -1030,413 +1027,171 @@ function App() {
               )}
             </div>
           )}
-          {/* スケジュール タブ */}
-          {tab==="schedule"&&(
-            <div style={{paddingBottom:100}}>
-              {(()=>{
-                const filteredSorted = searchQuery
-                  ? sorted.filter(t =>
-                      normalizeStr(getT(t,"title",lang)).includes(normalizeStr(searchQuery)) ||
-                      normalizeStr(getT(t,"summary",lang)).includes(normalizeStr(searchQuery)) ||
-                      normalizeStr(t.date).includes(normalizeStr(searchQuery)) ||
-                      (t.items||[]).some(i=>
-                        normalizeStr(getT(i,"label",lang)).includes(normalizeStr(searchQuery))||
-                        normalizeStr(getT(i,"detail",lang)).includes(normalizeStr(searchQuery))
-                      )
-                    )
-                  : sorted;
-                return filteredSorted.map((task, idx) => (
-                  <div key={task.id}>
-                    <div className={`cat-row${expandedTask===task.id?" expanded":""}`} onClick={()=>setExpandedTask(expandedTask===task.id?null:task.id)}>
-                      {/* 左：本文（曜日・タイトル・概要） */}
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",marginBottom:5}}>
-                          {DAYS.every(d=>task.days.includes(d))
-                            ? <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:700,background:"#1a1a20",color:"#f0eeea"}}>ALL</span>
-                            : DAYS.map(d=><span key={d} style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:task.days.includes(d)?"#1a1a20":"#eae7e0",color:task.days.includes(d)?"#f0eeea":"#b0ada8"}}>{d}</span>)
-                          }
-                          {(getT(task,"date",lang)||task.date)&&<span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:"#1a1a20",color:"#f0eeea"}}>{getT(task,"date",lang)||task.date}</span>}
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <div style={{fontSize:15,fontWeight:700,color:"#1a1a20"}}>{getT(task,"title",lang)}</div>
-                          {task.priority==="low"&&<span className="pri-badge pri-low">持越可</span>}
-                          {task.priority==="high"&&<span className="pri-badge pri-high">重要</span>}
-                          {task.priority==="top"&&<span className="pri-badge pri-top">最重要</span>}
-                        </div>
-                        {getT(task,"summary",lang)&&<div style={{fontSize:12,color:"#908e88",marginTop:2,lineHeight:1.4}}><LinkText text={getT(task,"summary",lang)}/></div>}
-                      </div>
-                      {/* 右：時刻 */}
-                      <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:4,paddingLeft:8,borderLeft:"1px solid #eae7e0",minWidth:62}}>
-                        <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:700,color:"#1a1a20",lineHeight:1}}>{fmt(task.hour,task.minute)}</span>
-                        {task.endHour!=null&&task.endHour!==""&&<>
-                          <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"#b0ada8",lineHeight:1}}>↓</span>
-                          <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,fontWeight:700,color:"#908e88",lineHeight:1}}>{fmt(task.endHour,task.endMinute??0)}</span>
-                        </>}
-                      </div>
-                      {editMode&&<div style={{display:"flex",flexDirection:"column",gap:6,paddingLeft:8,flexShrink:0}}>
-                        <button onClick={e=>{e.stopPropagation();setEditTask({...task});}} className="io" style={{fontSize:13,padding:"6px 10px"}}>✏️</button>
-                        <button onClick={e=>{e.stopPropagation();openConfirm("この作業を削除しますか？",()=>deleteTask(task.id));}} className="io" style={{fontSize:13,padding:"6px 10px",color:"#c05050"}}>🗑</button>
-                      </div>}
+
+          {sorted.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📋</div><div style={{fontSize:15}}>{editMode?"下の「＋ 作業追加」から追加してください。":"編集ボタンを押すと作業を追加できます。"}</div></div>}
+          {(()=>{
+            const filteredSorted = searchQuery
+              ? sorted.filter(t =>
+                  normalizeStr(getT(t,"title",lang)).includes(normalizeStr(searchQuery)) ||
+                  normalizeStr(getT(t,"summary",lang)).includes(normalizeStr(searchQuery)) ||
+                  normalizeStr(t.date).includes(normalizeStr(searchQuery)) ||
+                  (t.items||[]).some(i=>
+                    normalizeStr(getT(i,"label",lang)).includes(normalizeStr(searchQuery))||
+                    normalizeStr(getT(i,"detail",lang)).includes(normalizeStr(searchQuery))
+                  )
+                )
+              : sorted;
+            return filteredSorted.map((task) => (
+              <div key={task.id}>
+                <div className={`cat-row${expandedTask===task.id?" expanded":""}`} onClick={()=>setExpandedTask(expandedTask===task.id?null:task.id)}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",marginBottom:5}}>
+                      {DAYS.every(d=>task.days.includes(d))
+                        ? <span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:700,background:"#1a1a20",color:"#f0eeea"}}>ALL</span>
+                        : DAYS.map(d=><span key={d} style={{fontFamily:"IBM Plex Mono,monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:task.days.includes(d)?"#1a1a20":"#eae7e0",color:task.days.includes(d)?"#f0eeea":"#b0ada8"}}>{d}</span>)
+                      }
+                      {(getT(task,"date",lang)||task.date)&&<span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:11,padding:"3px 6px",borderRadius:5,fontWeight:500,background:"#1a1a20",color:"#f0eeea"}}>{getT(task,"date",lang)||task.date}</span>}
                     </div>
-                    {expandedTask===task.id&&(
-                      <div style={{borderBottom:"1px solid #eae7e0"}}>
-                        <StepList
-                          items={task.items||[]}
-                          lang={lang}
-                          editMode={editMode}
-                          resolveImg={resolveImg}
-                          onAdd={()=>addItem(task.id,null,null)}
-                          onAddLink={null}
-                          onTap={item=>setSelItem({...item,taskId:task.id})}
-                          onEdit={item=>setEditItem({...item,taskId:task.id})}
-                          onReorder={newItems=>reorderTaskItems(task.id,newItems)}
-                          showToast={showToast}
-                          manuals={manuals}
-                          getT={getT}
-                          uploadingItems={uploadingItems}
-                        />
-                      </div>
-                    )}
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <div style={{fontSize:15,fontWeight:700,color:"#1a1a20"}}>{getT(task,"title",lang)}</div>
+                      {task.priority==="low"&&<span className="pri-badge pri-low">持越可</span>}
+                      {task.priority==="high"&&<span className="pri-badge pri-high">重要</span>}
+                      {task.priority==="top"&&<span className="pri-badge pri-top">最重要</span>}
+                    </div>
+                    {getT(task,"summary",lang)&&<div style={{fontSize:12,color:"#908e88",marginTop:2,lineHeight:1.4}}><LinkText text={getT(task,"summary",lang)}/></div>}
                   </div>
-                ));
-              })()}
-              {editMode&&expandedTask===null&&(
-                <div style={{padding:"12px 16px"}}>
-                  <button onClick={()=>setShowAddTask(true)} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:12,padding:"14px",fontSize:14,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                    <span>📋</span> 作業を追加
-                  </button>
+                  <div style={{flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:4,paddingLeft:8,borderLeft:"1px solid #eae7e0",minWidth:62}}>
+                    <span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:13,fontWeight:700,color:"#1a1a20",lineHeight:1}}>{fmt(task.hour,task.minute)}</span>
+                    {task.endHour!=null&&task.endHour!==""&&<>
+                      <span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:9,color:"#b0ada8",lineHeight:1}}>↓</span>
+                      <span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:13,fontWeight:700,color:"#908e88",lineHeight:1}}>{fmt(task.endHour,task.endMinute??0)}</span>
+                    </>}
+                  </div>
+                  <div style={{fontSize:18,color:expandedTask===task.id?"#1a1a20":"#c8c4bc",fontWeight:700,transition:"transform .2s",transform:expandedTask===task.id?"rotate(90deg)":"none",flexShrink:0}}>›</div>
+                  {editMode&&<button onClick={e=>{e.stopPropagation();setEditTask({...task});}} style={{background:expandedTask===task.id?"rgba(255,255,255,.15)":"#eae7e0",border:"none",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
                 </div>
-              )}
+                {expandedTask===task.id&&(
+                  <div className="steps-panel" style={{padding:"14px 16px 14px 20px",marginLeft:16}}>
+                    <StepList
+                      items={task.items||[]}
+                      lang={lang}
+                      editMode={editMode}
+                      resolveImg={resolveImg}
+                      onAdd={()=>addTaskItem(task.id)}
+                      onAddLink={()=>setLinkPicker(task.id)}
+                      onTap={item=>item.linkRef?setLinkedItem({...item,taskId:task.id}):setSelItem({...item,taskId:task.id})}
+                      onEdit={item=>item.linkRef?setLinkedItem({...item,taskId:task.id,editMode:true}):setEditItem({...item,taskId:task.id})}
+                      onReorder={arr=>reorderTaskItems(task.id,arr)}
+                      showToast={showToast}
+                      manuals={manuals}
+                      getT={getT}
+                      uploadingItems={uploadingItems}
+                    />
+                  </div>
+                )}
+              </div>
+            ));
+          })()}
+          {editMode&&expandedTask===null&&(
+            <div style={{padding:"12px 16px"}}>
+              <button onClick={()=>setShowAddTask(true)} style={{background:"transparent",color:"#0d7377",border:"1.5px dashed #0d7377",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span>📋</span> 作業追加</button>
             </div>
           )}
-          {/* マニュアル タブ */}
-          {tab==="manual"&&(
-            <div style={{paddingBottom:100}}>
-              {(()=>{
-                const filteredManuals = searchQuery
-                  ? manuals.filter(m=>{
-                      const q=normalizeStr(searchQuery);
-                      const hit=s=>normalizeStr(s).includes(q);
-                      return hit(getT(m,"title",lang))||
-                             hit(getT(m,"summary",lang))||
-                             (m.subcategories||[]).some(s=>
-                               hit(getT(s,"title",lang))||
-                               hit(getT(s,"summary",lang))||
-                               (s.items||[]).some(i=>
-                                 hit(getT(i,"label",lang))||
-                                 hit(getT(i,"detail",lang))
-                               )
-                             );
-                    })
-                  : manuals;
-                return(
-                <DragList
-                  items={filteredManuals}
-                  editMode={editMode}
-                  showToast={showToast}
-                  onReorder={reorderCats}
-                  renderItem={(m,dragHandle)=>(
-                    <div key={m.id}>
-                      <div className={`cat-row${expandedCat===m.id?" expanded":""}`} onClick={()=>{setExpandedCat(expandedCat===m.id?null:m.id);setSelSub(null);}}>
-                        {dragHandle}
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:15,fontWeight:700,color:"#1a1a20"}}>{getT(m,"title",lang)}</div>
-                          {getT(m,"summary",lang)&&<div style={{fontSize:12,color:"#908e88",marginTop:2,lineHeight:1.4}}><LinkText text={getT(m,"summary",lang)}/></div>}
+        </div>
+      )}
+      {tab==="manual" && (
+        <div>
+          {manuals.length===0 && <div style={{textAlign:"center",padding:"60px 20px",color:"#b0ada8"}}><div style={{fontSize:36,marginBottom:12,opacity:.3}}>📖</div><div style={{fontSize:15}}>{editMode?"下の「＋ カテゴリ追加」から追加してください。":"編集ボタンを押すとカテゴリを追加できます。"}</div></div>}
+          {(()=>{
+            const filteredManuals = searchQuery
+              ? manuals.filter(m=>{
+                  const q=normalizeStr(searchQuery);
+                  const hit=s=>normalizeStr(s).includes(q);
+                  return hit(getT(m,"title",lang))||
+                         hit(getT(m,"summary",lang))||
+                         (m.subcategories||[]).some(s=>
+                           hit(getT(s,"title",lang))||
+                           hit(getT(s,"summary",lang))||
+                           (s.items||[]).some(i=>
+                             hit(getT(i,"label",lang))||
+                             hit(getT(i,"detail",lang))
+                           )
+                         );
+                })
+              : manuals;
+            return(
+          <DragList
+            items={filteredManuals}
+            onReorder={reorderCats}
+            editMode={editMode}
+            showToast={showToast}
+            renderItem={(cat,dragHandle)=>(
+            <div key={cat.id}>
+              <div className={`cat-row${expandedCat===cat.id?" expanded":""}`} onClick={()=>{ const next=expandedCat===cat.id?null:cat.id; setExpandedCat(next); setSelSub(null); }}>
+                {editMode&&dragHandle}
+                <div style={{fontSize:18,color:expandedCat===cat.id?"#1a1a20":"#c8c4bc",fontWeight:700,transition:"transform .2s",transform:expandedCat===cat.id?"rotate(90deg)":"none",flexShrink:0}}>›</div>
+                <div style={{flex:1}}>
+                  <div className="cat-title" style={{fontSize:16,fontWeight:700,color:"#1a1a20"}}>{getT(cat,"title",lang)}</div>
+                  {getT(cat,"summary",lang)&&<div className="cat-summary" style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4}}><LinkText text={getT(cat,"summary",lang)}/></div>}
+                </div>
+                {editMode&&<button onClick={e=>{e.stopPropagation();setEditCat({...cat});}} style={{background:"#eae7e0",border:"none",borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
+              </div>
+              {expandedCat===cat.id && (
+                <div className="sub-list">
+                  <DragList
+                    items={cat.subcategories||[]}
+                    onReorder={arr=>reorderSubs(cat.id,arr)}
+                    editMode={editMode}
+                    showToast={showToast}
+                    renderItem={(sub,dragHandle)=>(
+                    <div key={sub.id}>
+                      <div className={`sub-row${selSub?.catId===cat.id && selSub?.subId===sub.id?" sel":""}`} onClick={()=>setSelSub(selSub?.subId===sub.id?null:{catId:cat.id,subId:sub.id})}>
+                        {editMode&&dragHandle}
+                        <div style={{width:8,height:8,borderRadius:"50%",background:(selSub?.catId===cat.id && selSub?.subId===sub.id)?"#0d7377":"#c0bcb5",flexShrink:0,transition:"background .15s"}}/>
+                        <div style={{flex:1}}>
+                          <div className="sub-title" style={{fontSize:15,fontWeight:600,color:"#1a1a20"}}>{getT(sub,"title",lang)}</div>
+                          {getT(sub,"summary",lang)&&<div className="sub-summary" style={{fontSize:12,color:"#908e88",marginTop:2}}><LinkText text={getT(sub,"summary",lang)}/></div>}
                         </div>
-                        {editMode&&<div style={{display:"flex",gap:6,flexShrink:0}}>
-                          <button onClick={e=>{e.stopPropagation();setEditCat({...m});}} className="io" style={{fontSize:13,padding:"6px 10px"}}>✏️</button>
-                          <button onClick={e=>{e.stopPropagation();openConfirm("このカテゴリを削除しますか？",()=>deleteCat(m.id));}} className="io" style={{fontSize:13,padding:"6px 10px",color:"#c05050"}}>🗑</button>
-                        </div>}
-                        <span style={{fontSize:18,color:expandedCat===m.id?"#1a1a20":"#b0ada8",marginLeft:4,flexShrink:0}}>{expandedCat===m.id?"▾":"▸"}</span>
+                        {editMode&&<button onClick={e=>{e.stopPropagation();setEditSub({...sub,catId:cat.id});}} style={{background:"#e0ddd6",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,fontWeight:600,color:"#1a1a20",cursor:"pointer",flexShrink:0}}>編集</button>}
                       </div>
-                      {expandedCat===m.id&&(
-                        <div style={{paddingLeft:16}}>
-                          <DragList
-                            items={m.subcategories||[]}
+                      {selSub?.catId===cat.id && selSub?.subId===sub.id && (
+                        <div className="steps-panel" style={{padding:"16px 16px 16px 24px"}}>
+                          <StepList
+                            items={sub.items||[]}
+                            lang={lang}
                             editMode={editMode}
+                            resolveImg={resolveImg}
+                            onAdd={()=>addItem(cat.id,sub.id)}
+                            onTap={item=>setSelItem({...item,catId:cat.id,subId:sub.id})}
+                            onEdit={item=>setEditItem({...item,catId:cat.id,subId:sub.id})}
+                            onReorder={arr=>reorderItems(cat.id,sub.id,arr)}
                             showToast={showToast}
-                            onReorder={newSubs=>reorderSubs(m.id,newSubs)}
-                            renderItem={(sub,dragHandle2)=>(
-                              <div key={sub.id}>
-                                <div className={`cat-row${selSub&&selSub.catId===m.id&&selSub.subId===sub.id?" expanded":""}`} style={{borderLeft:"2px solid #eae7e0"}} onClick={()=>setSelSub(selSub&&selSub.catId===m.id&&selSub.subId===sub.id?null:{catId:m.id,subId:sub.id})}>
-                                  {dragHandle2}
-                                  <div style={{flex:1,minWidth:0}}>
-                                    <div style={{fontSize:14,fontWeight:700,color:"#1a1a20"}}>{getT(sub,"title",lang)}</div>
-                                    {getT(sub,"summary",lang)&&<div style={{fontSize:12,color:"#908e88",marginTop:2}}><LinkText text={getT(sub,"summary",lang)}/></div>}
-                                  </div>
-                                  {editMode&&<div style={{display:"flex",gap:6,flexShrink:0}}>
-                                    <button onClick={e=>{e.stopPropagation();setEditSub({...sub,catId:m.id});}} className="io" style={{fontSize:13,padding:"6px 10px"}}>✏️</button>
-                                    <button onClick={e=>{e.stopPropagation();openConfirm("このサブカテゴリを削除しますか？",()=>deleteSub(m.id,sub.id));}} className="io" style={{fontSize:13,padding:"6px 10px",color:"#c05050"}}>🗑</button>
-                                  </div>}
-                                </div>
-                                {selSub&&selSub.catId===m.id&&selSub.subId===sub.id&&(
-                                  <div style={{paddingLeft:32,borderLeft:"3px solid #0d7377",marginLeft:8}}>
-                                    <StepList
-                                      items={sub.items||[]}
-                                      lang={lang}
-                                      editMode={editMode}
-                                      resolveImg={resolveImg}
-                                      onAdd={()=>addItem(null,m.id,sub.id)}
-                                      onAddLink={null}
-                                      onTap={item=>setSelItem({...item,catId:m.id,subId:sub.id})}
-                                      onEdit={item=>setEditItem({...item,catId:m.id,subId:sub.id})}
-                                      onReorder={newItems=>reorderItems(m.id,sub.id,newItems)}
-                                      showToast={showToast}
-                                      manuals={manuals}
-                                      getT={getT}
-                                      uploadingItems={uploadingItems}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                            uploadingItems={uploadingItems}
                           />
-                          {editMode&&selSub&&selSub.catId===m.id&&(
-                            <div style={{padding:"8px 16px"}}>
-                              <button onClick={()=>setShowAddSub({catId:m.id})} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:10,padding:"12px",fontSize:13,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                                <span>📂</span> サブカテゴリを追加
-                              </button>
-                            </div>
-                          )}
-                          {editMode&&expandedCat===m.id&&!selSub&&(
-                            <div style={{padding:"8px 16px"}}>
-                              <button onClick={()=>setShowAddSub({catId:m.id})} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:10,padding:"12px",fontSize:13,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                                <span>📂</span> サブカテゴリを追加
-                              </button>
-                            </div>
-                          )}
                         </div>
                       )}
                     </div>
+                    )}
+                  />
+                  {editMode&&(selSub===null||selSub?.catId!==cat.id)&&(
+                    <div style={{padding:"12px 16px"}}>
+                      <button onClick={()=>{setShowAddSub(cat.id);setNewSub({title:"",summary:""});}} style={{background:"transparent",color:"#0d7377",border:"1.5px dashed #0d7377",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span>📂</span> サブカテゴリ追加</button>
+                    </div>
                   )}
-                />
-                );
-              })()}
-              {editMode&&expandedCat===null&&(
-                <div style={{padding:"12px 16px"}}>
-                  <button onClick={()=>setShowAddCat(true)} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:12,padding:"14px",fontSize:14,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                    <span>📁</span> カテゴリを追加
-                  </button>
                 </div>
               )}
             </div>
+            )}
+          />
+          );})()}
+          {editMode&&expandedCat===null&&(
+            <div style={{padding:"12px 16px"}}>
+              <button onClick={()=>setShowAddCat(true)} style={{background:"transparent",color:"#0d7377",border:"1.5px dashed #0d7377",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span>📁</span> カテゴリ追加</button>
+            </div>
           )}
-      {/* QR modal */}
-      {showQR&&gasUrl&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.75)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:24}} onClick={()=>setShowQR(false)}>
-          <div style={{background:"#faf8f4",borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:360,boxShadow:"0 16px 60px rgba(0,0,0,.3)"}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:18,fontWeight:700,marginBottom:6,textAlign:"center"}}>QRコードで共有</div>
-            <div style={{fontSize:13,color:"#908e88",marginBottom:20,textAlign:"center",lineHeight:1.6}}>このQRコードをスキャンすると<br/>GAS連携URLが自動で設定されます</div>
-            <div style={{background:"#fff",borderRadius:16,padding:16,display:"flex",justifyContent:"center",marginBottom:20}}>
-              <img src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(window.location.href.split("?")[0]+"?gas="+gasUrl)}`} alt="QR Code" style={{width:220,height:220,borderRadius:8}}/>
-            </div>
-            <div style={{fontSize:11,color:"#b0ada8",textAlign:"center",marginBottom:20,wordBreak:"break-all",lineHeight:1.5}}>{gasUrl.slice(0,60)}...</div>
-            <button className="btnG" onClick={()=>setShowQR(false)}>閉じる</button>
-          </div>
         </div>
       )}
-      {confirm&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.75)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-          <div style={{background:"#faf8f4",borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:360}}>
-            <div style={{fontSize:16,fontWeight:700,marginBottom:20,whiteSpace:"pre-wrap"}}>{confirm.msg}</div>
-            <div style={{display:"flex",gap:12}}>
-              <button className="btnG" style={{flex:1}} onClick={()=>setConfirm(null)}>キャンセル</button>
-              <button className="btnP" style={{flex:1}} onClick={()=>{confirm.ok();setConfirm(null);}}>OK</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {toast&&<div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",background:toast.type==="err"?"#c05050":"#1a1a20",color:"#f0eeea",padding:"12px 20px",borderRadius:12,fontSize:14,fontWeight:600,zIndex:600,pointerEvents:"none",maxWidth:"90vw",textAlign:"center"}}>{toast.msg}</div>}
-      {passModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.85)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-          <div style={{background:"#faf8f4",borderRadius:24,padding:"32px 24px",width:"100%",maxWidth:340}}>
-            <div style={{fontSize:18,fontWeight:700,marginBottom:8,textAlign:"center"}}>
-              {passModal==="auth"?"パスコードを入力":passModal==="set1"?"パスコードを設定":passModal==="set2"?"もう一度入力":passModal==="change"?"現在のパスコード":"パスコードを削除"}
-            </div>
-            <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:24,marginTop:16}}>
-              {[0,1,2,3].map(i=>(
-                <div key={i} style={{width:16,height:16,borderRadius:"50%",background:passDigits.length>i?"#1a1a20":"#dedad0"}}/>
-              ))}
-            </div>
-            {passError&&<div style={{color:"#c05050",textAlign:"center",fontSize:13,marginBottom:12}}>パスコードが違います</div>}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:12}}>
-              {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((d,i)=>(
-                <button key={i} onClick={()=>handleDigit(d)} disabled={d===""} style={{padding:"18px",fontSize:20,fontWeight:600,background:d===""?"transparent":"#fff",border:d===""?"none":"1.5px solid #dedad0",borderRadius:14,cursor:d===""?"default":"pointer",fontFamily:"inherit",color:"#1a1a20"}}>{d}</button>
-              ))}
-            </div>
-            <button className="btnG" onClick={()=>{setPassModal(null);setPassDigits([]);setPassError(false);}}>キャンセル</button>
-          </div>
-        </div>
-      )}
-      {showSettings&&(
-        <div className="overlay" onClick={()=>setShowSettings(false)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <div className="sp">
-              <div style={{fontSize:18,fontWeight:700,marginBottom:6}}>設定</div>
-              <div style={{fontSize:13,color:"#908e88",marginBottom:24,lineHeight:1.6}}>翻訳はMyMemory無料API（登録不要・約5,000文字/日）で行います。</div>
-              <div style={{marginBottom:24}}>
-                <label className="lbl">編集モード パスコード</label>
-                <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px",background:"#f0ede8",borderRadius:12}}>
-                  <div style={{flex:1,fontSize:15,fontWeight:500}}>{passcode?"設定済み（●●●●）":"未設定（誰でも編集可）"}</div>
-                  <button className="btnG" style={{width:"auto",padding:"10px 16px",fontSize:14}} onClick={()=>{setShowSettings(false);setPassDigits([]);setPassError(false);setPassModal(passcode?"change":"set1");}}>{passcode?"変更":"設定"}</button>
-                  {passcode&&<button className="btnG" style={{width:"auto",padding:"10px 16px",fontSize:14,color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>{setShowSettings(false);setPassDigits([]);setPassError(false);setPassModal("delete");}}>削除</button>}
-                </div>
-              </div>
-              <div style={{marginBottom:24}}>
-                <label className="lbl">表示言語</label>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {ALL_LANGS.map(l=>{const on=enabledLangs.includes(l.code);return(
-                    <div key={l.code} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:on?"#f0ede8":"#faf8f4",borderRadius:10,border:`1px solid ${on?"#d0ccc5":"#eae7e0"}`}}>
-                      <span style={{fontSize:22}}>{l.flag}</span>
-                      <div style={{flex:1}}><div style={{fontSize:15,fontWeight:600}}>{l.label}（{l.native}）</div>{l.code==="ja"&&<div style={{fontSize:12,color:"#a0a09a"}}>編集言語（常に有効）</div>}</div>
-                      {l.code!=="ja"&&<button className="btnG" style={{width:"auto",padding:"8px 14px",fontSize:13}} onClick={()=>setEnabledLangs(on?enabledLangs.filter(c=>c!==l.code):[...enabledLangs,l.code])}>{on?"無効":"追加"}</button>}
-                    </div>
-                  );})}
-                </div>
-                {enabledLangs.length>1&&<button className="btnP" style={{marginTop:12}} onClick={()=>{setShowSettings(false);handleLangSwitch(lang);}}>{transProgress!=null?`翻訳中... ${transProgress}%`:"未翻訳を一括翻訳"}</button>}
-              </div>
-              <div style={{marginBottom:24}}>
-                <label className="lbl">データ管理</label>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  <button className="btnG" onClick={()=>{handleExport();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬇</span> JSONで書き出し（画像込み）</button>
-                  <button className="btnG" onClick={()=>{importRef.current.click();setShowSettings(false);}} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>⬆</span> JSONを読み込む</button>
-                </div>
-              </div>
-              <div style={{marginBottom:24}}>
-                <label className="lbl">GAS連携URL（複数端末でデータ共有）</label>
-                <input className="inp" style={{flex:1,fontSize:13}} value={gasUrl} onChange={e=>saveGasUrl(e.target.value)} placeholder="https://script.google.com/macros/s/..."/>
-                {gasUrl&&<div style={{marginTop:8,display:"flex",gap:8}}>
-                  <button className="btnG" style={{flex:1}} onClick={()=>{loadFromGas();setShowSettings(false);}}>⬇ GASから読み込み</button>
-                  <button className="btnG" onClick={()=>setShowQR(true)} style={{width:"auto",padding:"12px 16px"}}>📲 QR</button>
-                  <button className="btnG" style={{width:"auto",padding:"12px 16px",color:"#c05050",borderColor:"#f5c5c5"}} onClick={()=>openConfirm("GAS連携URLを削除しますか？\n削除すると自動同期が停止します。",()=>saveGasUrl(""))}>削除</button>
-                </div>}
-                {!gasUrl&&<div style={{fontSize:12,color:"#a0a09a",marginTop:6,lineHeight:1.6}}>GASをデプロイして発行されたURLを入力すると、データが自動的に保存され、複数端末で共有できます。</div>}
-              </div>
-              <div style={{marginBottom:24}}>
-                <label className="lbl">画像キャッシュ</label>
-                <div style={{fontSize:12,color:"#a0a09a",marginBottom:8,lineHeight:1.6}}>同期時にDriveの画像を端末に保存します。差し替えた場合はクリアして再同期してください。</div>
-                <button className="btnG" onClick={async()=>{const all=await idbGetAll();const ks=Object.keys(all).filter(k=>k.startsWith("cache_"));for(const k of ks)await idbDel(k);setImgCache(p=>{const c={...p};ks.forEach(k=>delete c[k]);return c;});showToast("ok",`キャッシュを${ks.length}件クリアしました`);}}>🗑 画像キャッシュをクリア</button>
-              </div>
-              <button className="btnG" onClick={()=>setShowSettings(false)}>閉じる</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {selItem&&!editItem&&(
-        <div className="overlay" onClick={()=>setSelItem(null)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div style={{borderRadius:"24px 24px 0 0",overflow:"hidden",background:"#eae7e0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              {resolveImg(selItem.image)?<img src={resolveImg(selItem.image)} alt="" style={{maxWidth:"100%",maxHeight:"65vh",display:"block",margin:"0 auto"}}/>:<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:40}}><span style={{fontSize:48,opacity:.2}}>🖼</span><span style={{fontSize:14,color:"#b0ada8"}}>画像なし</span></div>}
-            </div>
-            <div className="sp">
-              <div style={{fontSize:20,fontWeight:700,marginBottom:14}}>{getT(selItem,"label",lang)}</div>
-              {getT(selItem,"detail",lang)&&<div style={{fontSize:14,color:"#606060",lineHeight:1.8,whiteSpace:"pre-wrap",marginBottom:16}}><LinkText text={getT(selItem,"detail",lang)}/></div>}
-              {editMode&&<button className="btnP" onClick={()=>{setEditItem(selItem);setSelItem(null);}}>✏️ 編集</button>}
-            </div>
-          </div>
-        </div>
-      )}
-      {editItem&&(
-        <div className="overlay" onClick={()=>setEditItem(null)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <ItemEditSheet
-              item={editItem} resolveImg={resolveImg}
-              onSave={item=>item.taskId?saveTaskItem(item):saveItem(item)}
-              onDelete={item=>item.taskId?deleteTaskItem(item):deleteItem(item)}
-              onClose={()=>setEditItem(null)}
-              saveImage={saveImage} deleteImage={deleteImage}
-              openConfirm={openConfirm}
-            />
-          </div>
-        </div>
-      )}
-      {showAddTask&&(
-        <div className="overlay" onClick={()=>setShowAddTask(false)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <div className="sp">
-              <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>作業を追加</div>
-              <TaskFields v={newTask} setV={setNewTask}/>
-              <button className="btnP" onClick={()=>{if(!newTask.title.trim())return;saveTask(null,newTask);setShowAddTask(false);setNewTask({title:"",summary:"",hour:9,minute:0,endHour:"",endMinute:0,days:["月","火","水","木","金"],date:"",priority:"none"});}}>追加する</button>
-              <button className="btnG" style={{marginTop:10}} onClick={()=>setShowAddTask(false)}>キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {editTask&&(
-        <div className="overlay" onClick={()=>setEditTask(null)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <div className="sp">
-              <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>作業を編集</div>
-              <TaskFields v={editTask} setV={setEditTask}/>
-              <button className="btnP" onClick={()=>{saveTask(editTask.id,editTask);setEditTask(null);}}>保存する</button>
-              <button className="btnG" style={{marginTop:10}} onClick={()=>setEditTask(null)}>キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showAddCat&&(
-        <div className="overlay" onClick={()=>setShowAddCat(false)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <div className="sp">
-              <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>カテゴリを追加</div>
-              <input className="inp" placeholder="カテゴリ名" value={newCat.title} onChange={e=>setNewCat(p=>({...p,title:e.target.value}))}/>
-              <input className="inp" style={{marginTop:10}} placeholder="説明（任意）" value={newCat.summary} onChange={e=>setNewCat(p=>({...p,summary:e.target.value}))}/>
-              <button className="btnP" style={{marginTop:20}} onClick={()=>{if(!newCat.title.trim())return;saveCat(null,newCat);setShowAddCat(false);setNewCat({title:"",summary:""});}}>追加する</button>
-              <button className="btnG" style={{marginTop:10}} onClick={()=>setShowAddCat(false)}>キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {editCat&&(
-        <div className="overlay" onClick={()=>setEditCat(null)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <div className="sp">
-              <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>カテゴリを編集</div>
-              <input className="inp" placeholder="カテゴリ名" value={editCat.title} onChange={e=>setEditCat(p=>({...p,title:e.target.value}))}/>
-              <input className="inp" style={{marginTop:10}} placeholder="説明（任意）" value={editCat.summary||""} onChange={e=>setEditCat(p=>({...p,summary:e.target.value}))}/>
-              <button className="btnP" style={{marginTop:20}} onClick={()=>{saveCat(editCat.id,editCat);setEditCat(null);}}>保存する</button>
-              <button className="btnG" style={{marginTop:10}} onClick={()=>setEditCat(null)}>キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showAddSub&&(
-        <div className="overlay" onClick={()=>setShowAddSub(null)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <div className="sp">
-              <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>サブカテゴリを追加</div>
-              <input className="inp" placeholder="サブカテゴリ名" value={newSub.title} onChange={e=>setNewSub(p=>({...p,title:e.target.value}))}/>
-              <input className="inp" style={{marginTop:10}} placeholder="説明（任意）" value={newSub.summary} onChange={e=>setNewSub(p=>({...p,summary:e.target.value}))}/>
-              <button className="btnP" style={{marginTop:20}} onClick={()=>{if(!newSub.title.trim())return;saveSub(showAddSub.catId,null,newSub);setShowAddSub(null);setNewSub({title:"",summary:""});}}>追加する</button>
-              <button className="btnG" style={{marginTop:10}} onClick={()=>setShowAddSub(null)}>キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {editSub&&(
-        <div className="overlay" onClick={()=>setEditSub(null)}>
-          <div className="sheet" onClick={e=>e.stopPropagation()}>
-            <div className="dh"/>
-            <div className="sp">
-              <div style={{fontSize:18,fontWeight:700,marginBottom:20}}>サブカテゴリを編集</div>
-              <input className="inp" placeholder="サブカテゴリ名" value={editSub.title} onChange={e=>setEditSub(p=>({...p,title:e.target.value}))}/>
-              <input className="inp" style={{marginTop:10}} placeholder="説明（任意）" value={editSub.summary||""} onChange={e=>setEditSub(p=>({...p,summary:e.target.value}))}/>
-              <button className="btnP" style={{marginTop:20}} onClick={()=>{saveSub(editSub.catId,editSub.id,editSub);setEditSub(null);}}>保存する</button>
-              <button className="btnG" style={{marginTop:10}} onClick={()=>setEditSub(null)}>キャンセル</button>
-            </div>
-          </div>
-        </div>
-      )}
-      <input ref={importRef} type="file" accept=".json" style={{display:"none"}} onChange={handleImport}/>
-    </div>
-    </div>
+      <input ref={importRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={handleImport}/>
     </div>
   );
 }
@@ -1517,7 +1272,7 @@ function StepList({ items, lang, editMode, resolveImg, onAdd, onTap, onEdit, onR
             <div style={{minWidth:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",paddingTop:2}}>
               {uploadingItems?.has(item.id)
                 ? <span style={{fontSize:12,display:"inline-block",animation:"spin .8s linear infinite",color:"#0d7377"}}>⟳</span>
-                : <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:13,color:"#b0ada8"}}>{String(i+1).padStart(2,"0")}</span>
+                : <span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:13,color:"#b0ada8"}}>{String(i+1).padStart(2,"0")}</span>
               }
             </div>
             <div style={{flex:1,minWidth:0}}>
