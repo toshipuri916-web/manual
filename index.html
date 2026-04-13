@@ -907,7 +907,7 @@ function App() {
     setTasks(p=>p.map(t=>t.id===item.taskId?{...t,items:t.items.filter(i=>i.id!==item.id)}:t));
     setEditItem(null); setSelItem(null);
   });
-  const reorderTaskItems = (taskId,arr) => { setTasks(p=>p.map(t=>t.id===taskId?{...t,items:arr}:t)); setSelTask(p=>p?.id===taskId?{...p,items:arr}:p); };
+  const reorderTaskItems = (taskId,arr) => { setTasks(p=>p.map(t=>t.id===taskId?{...t,items:arr}:t)); };
 
   const sorted = [...tasks].sort((a,b)=>a.hour*60+a.minute-(b.hour*60+b.minute));
   const currentSub = selSub ? (manuals.find(m=>m.id===selSub.catId)?.subcategories||[]).find(s=>s.id===selSub.subId) : null;
