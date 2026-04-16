@@ -1451,57 +1451,84 @@ function DragList({ items, onReorder, editMode, showToast, renderItem }) {
 
 /* -- StepList -- */
 function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, onEdit, onReorder, showToast, manuals, getT, uploadingItems }) {
-  const [local, setLocal] = React.useState(items||[]);
-  const [dragging, setDragging] = React.useState(null);
-  const [over, setOver] = React.useState(null);
-  React.useEffect(()=>{ setLocal(items||[]); }, [items]);
+  const [local,    setLocal]    = useState(items);
+  const [dragIdx,  setDragIdx]  = useState(null);
+  const [overIdx,  setOverIdx]  = useState(null);
+  const [pending,  setPending]  = useState(null);
+  const [showConf, setShowConf] = useState(false);
+  const listRef = useRef(null);
+  const dRef    = useRef(null);
+  const active  = useRef(false);
+
+  useEffect(() => {
+    if (dRef.current === null && !showConf) setLocal(items);
+  }, [items]);
+
+  const getIdx = y => { const kids=Array.from(listRef.current?.children??[]); for(let i=0;i<kids.length;i++) if(y<kids[i].getBoundingClientRect().bottom) return i; return kids.length-1; };
+  const onDown = (e,i) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); dRef.current=i; active.current=true; setDragIdx(i); setOverIdx(i); };
+  const onMove = (e,i) => { if(!active.current||dRef.current!==i) return; e.preventDefault(); setOverIdx(getIdx(e.clientY)); };
+  const onUp   = (e,i) => {
+    if(!active.current||dRef.current!==i) return;
+    active.current=false; const from=dRef.current, to=overIdx??from; dRef.current=null; setDragIdx(null); setOverIdx(null);
+    if(from===to) return;
+    const arr=[...local]; const [m]=arr.splice(from,1); arr.splice(to,0,m);
+    setLocal(arr); setPending(arr); setShowConf(true);
+  };
+
+  const getT2 = (obj,field) => { if(!lang||lang==="ja") return obj[field]||""; return obj.translations?.[lang]?.[field]||obj[field]||""; };
+
   return (
-    <div style={{padding:"8px 0"}}>
-      {local.map((item,i)=>(
-        <div key={item.id}
-          style={{opacity:dragging===i?.4:1,outline:over===i?"2px solid #0d7377":"none",borderRadius:8}}
-          draggable={editMode}
-          onDragStart={e=>{if(!editMode)return;setDragging(i);e.dataTransfer.effectAllowed="move";}}
-          onDragOver={e=>{if(!editMode)return;e.preventDefault();setOver(i);}}
-          onDrop={e=>{
-            if(!editMode)return;
-            e.preventDefault();
-            if(dragging===null||dragging===i){setDragging(null);setOver(null);return;}
-            const next=[...local];
-            const [removed]=next.splice(dragging,1);
-            next.splice(i,0,removed);
-            setLocal(next);
-            setDragging(null);setOver(null);
-            onReorder(next);
-          }}
-          onDragEnd={()=>{setDragging(null);setOver(null);}}
-        >
-          <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 16px",cursor:editMode?"default":"pointer",borderBottom:"1px solid #f0ede8"}}
-            onClick={()=>!editMode&&onTap&&onTap(item)}>
-            <div style={{minWidth:26,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",paddingTop:2}}>
-              {uploadingItems?.has(item.id)
-                ? <span style={{fontSize:12,display:"inline-block",animation:"spin .8s linear infinite",color:"#0d7377"}}>⟳</span>
-                : <span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:13,color:"#b0ada8"}}>{String(i+1).padStart(2,"0")}</span>
+    <>
+      {editMode&&local.length>1&&<div style={{fontSize:12,color:"#a0a09a",marginBottom:8}}>☰ をドラッグして並び替え</div>}
+      <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:8}}>
+        {local.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:"#b0ada8",fontSize:14}}>手順がありません</div>}
+        {local.map((item,i)=>(
+          <div key={item.id} className={`sc${dragIdx===i?" dra":""}${overIdx===i&&dragIdx!==null&&dragIdx!==i?" dov":""}`}>
+            {editMode&&<div className="grip" onPointerDown={e=>onDown(e,i)} onPointerMove={e=>onMove(e,i)} onPointerUp={e=>onUp(e,i)} onPointerCancel={e=>onUp(e,i)}>⠿</div>}
+            <div style={{display:"flex",alignItems:"center",gap:14,padding:"14px 14px 14px"+(editMode?" 0":" 14px"),flex:1,cursor:"pointer",minWidth:0}} onClick={()=>{if(!active.current&&dragIdx===null) onTap(item);}}>
+              {(uploadingItems&&uploadingItems.has(item.id))
+                ? <span style={{minWidth:26,flexShrink:0,fontSize:14,color:"#0d7377",display:"inline-block",animation:"spin .8s linear infinite",textAlign:"center"}}>⟳</span>
+                : <span style={{fontFamily:"IBM Plex Mono,monospace",fontSize:13,color:"#b0ada8",minWidth:26,flexShrink:0}}>{String(i+1).padStart(2,"0")}</span>}
+              {item.linkRef
+                ? <div style={{width:48,height:48,borderRadius:10,background:"#e0f2f2",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>📎</div>
+                : resolveImg(item.image)
+                  ? <img src={resolveImg(item.image)} alt="" style={{width:48,height:48,borderRadius:10,objectFit:"cover",flexShrink:0,border:"1px solid #e0ddd6"}}/>
+                  : <div style={{width:48,height:48,borderRadius:10,background:"#eae7e0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:20,opacity:.25}}>🖼</span></div>
               }
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:600,color:"#1a1a20",display:"flex",alignItems:"center",gap:5}}>
+                  {item.linkRef&&<span style={{fontSize:10,background:"#e0f2f2",color:"#0d7377",borderRadius:4,padding:"1px 5px",fontWeight:700,flexShrink:0}}>リンク</span>}
+                  <span>{getT2(item,"label")||"（手順名未設定）"}</span>
+                </div>
+                {item.linkRef
+                  ? (()=>{ const cat=manuals?.find(m=>m.id===item.linkRef.catId); const sub=cat?.subcategories?.find(s=>s.id===item.linkRef.subId); return <>{sub?<div style={{fontSize:12,color:"#0d7377",marginTop:2}}>{getT?getT(cat,"title",lang):""} › {getT?getT(sub,"title",lang):""}</div>:<div style={{fontSize:12,color:"#c05050",marginTop:2}}>リンク先なし</div>}{item.memo&&<div style={{fontSize:12,color:"#606060",marginTop:2,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:1,WebkitBoxOrient:"vertical"}}>{item.memo}</div>}</>; })()
+                  : getT2(item,"detail")&&<div style={{fontSize:13,color:"#908e88",marginTop:3,lineHeight:1.4,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{getT2(item,"detail")}</div>
+                }
+              </div>
             </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:14,fontWeight:600,color:"#1a1a20"}}>{getT(item,"label",lang)||item.label}</div>
-              {getT(item,"detail",lang)&&<div style={{fontSize:12,color:"#a0a09a",marginTop:2,lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{getT(item,"detail",lang)}</div>}
-              {resolveImg(item.image)&&<div style={{marginTop:6,width:60,height:45,borderRadius:6,overflow:"hidden"}}>
-                <img src={resolveImg(item.image)} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-              </div>}
-            </div>
-            {editMode&&<button onClick={e=>{e.stopPropagation();onEdit&&onEdit(item);}} className="io" style={{fontSize:13,padding:"6px 10px",flexShrink:0}}>✏️</button>}
+            {(editMode||item.linkRef)&&<button onClick={()=>onEdit(item)} style={{background:item.linkRef?"#e0f2f2":"#f5f2ec",border:"none",borderLeft:"1px solid #eae7e0",padding:"0 14px",fontSize:13,color:item.linkRef?"#0d7377":"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500,alignSelf:"stretch",flexShrink:0}}>{item.linkRef?"詳細":"編集"}</button>}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
       {editMode&&(
-        <div style={{padding:"8px 16px",display:"flex",flexDirection:"column",gap:6}}>
-          {onAdd&&<button onClick={onAdd} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:10,padding:"12px",fontSize:13,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>📝</span> 手順を追加</button>}
-          {onAddLink&&<button onClick={onAddLink} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:10,padding:"12px",fontSize:13,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>📎</span> マニュアルから選択</button>}
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:8}}>
+          {onAdd&&<button onClick={onAdd} style={{background:"transparent",color:"#0d7377",border:"1.5px dashed #0d7377",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span>📝</span> 手順追加</button>}
+          {onAddLink&&<button onClick={onAddLink} style={{background:"transparent",color:"#0d7377",border:"1.5px dashed #0d7377",borderRadius:10,padding:"12px 16px",fontSize:14,cursor:"pointer",fontFamily:"inherit",width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><span>📎</span> マニュアルから選択</button>}
         </div>
       )}
-    </div>
+      {showConf&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(10,9,7,.55)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#faf8f4",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:400,boxShadow:"0 16px 60px rgba(0,0,0,.22)"}}>
+            <div style={{fontSize:18,fontWeight:700,marginBottom:8}}>順番を変更しますか？</div>
+            <div style={{fontSize:14,color:"#808078",marginBottom:24,lineHeight:1.6}}>確定しますか？</div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setShowConf(false);setLocal(items);}} style={{flex:1,background:"#fff",border:"1.5px solid #dedad0",borderRadius:12,padding:"14px",fontSize:15,color:"#1a1a20",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>元に戻す</button>
+              <button onClick={()=>{setShowConf(false);onReorder(pending);}} style={{flex:1,background:"#1a1a20",border:"none",borderRadius:12,padding:"14px",fontSize:15,color:"#f5f3ef",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>確定する</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
