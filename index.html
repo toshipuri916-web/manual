@@ -1166,6 +1166,8 @@ function App() {
                             onEdit={item=>setEditItem({...item,catId:cat.id,subId:sub.id})}
                             onReorder={arr=>reorderItems(cat.id,sub.id,arr)}
                             showToast={showToast}
+                            manuals={manuals}
+                            getT={getT}
                             uploadingItems={uploadingItems}
                           />
                         </div>
