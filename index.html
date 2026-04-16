@@ -1450,7 +1450,7 @@ function DragList({ items, onReorder, editMode, showToast, renderItem }) {
 }
 
 /* -- StepList -- */
-function StepList({ items, lang, editMode, resolveImg, onAdd, onTap, onEdit, onReorder, showToast, manuals, getT, uploadingItems }) {
+function StepList({ items, lang, editMode, resolveImg, onAdd, onAddLink, onTap, onEdit, onReorder, showToast, manuals, getT, uploadingItems }) {
   const [local, setLocal] = React.useState(items||[]);
   const [dragging, setDragging] = React.useState(null);
   const [over, setOver] = React.useState(null);
@@ -1495,11 +1495,10 @@ function StepList({ items, lang, editMode, resolveImg, onAdd, onTap, onEdit, onR
           </div>
         </div>
       ))}
-      {editMode&&onAdd&&(
-        <div style={{padding:"8px 16px"}}>
-          <button onClick={onAdd} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:10,padding:"12px",fontSize:13,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            <span>📝</span> 手順を追加
-          </button>
+      {editMode&&(
+        <div style={{padding:"8px 16px",display:"flex",flexDirection:"column",gap:6}}>
+          {onAdd&&<button onClick={onAdd} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:10,padding:"12px",fontSize:13,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>📝</span> 手順を追加</button>}
+          {onAddLink&&<button onClick={onAddLink} style={{width:"100%",background:"none",border:"2px dashed #0d7377",borderRadius:10,padding:"12px",fontSize:13,color:"#0d7377",cursor:"pointer",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><span>📎</span> マニュアルから選択</button>}
         </div>
       )}
     </div>
